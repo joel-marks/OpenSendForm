@@ -1,0 +1,36 @@
+{
+  "name": "OpenSendForm Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/OpenSendForm",
+  "remoteUser": "vscode",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+
+  "mounts": [
+    "source=opensendform-claude-config,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+
+  "forwardPorts": [8080, "mailpit:8025"],
+  "portsAttributes": {
+    "8080": { "label": "OpenSendForm (PHP dev server)" },
+    "mailpit:8025": { "label": "Mailpit inbox" }
+  },
+
+  "postCreateCommand": "sudo chown -R vscode:vscode /home/vscode/.claude && { [ -f composer.json ] && composer install || true; }",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "anthropic.claude-code"
+      ]
+    }
+  }
+}

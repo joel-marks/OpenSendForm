@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspaces/OpenSendForm:cached
+    command: sleep infinity
+    environment:
+      APP_ENV: dev
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    depends_on:
+      - mailpit
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
