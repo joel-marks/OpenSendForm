@@ -1,0 +1,14 @@
+# Dependencies
+/vendor/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Databases
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
