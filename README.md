@@ -21,5 +21,26 @@ This repo is developed AI-assisted (Claude Code in a devcontainer)
 under human architectural direction. See CLAUDE.md, CONTEXT.md and
 HISTORY.md for project state and process.
 
+### Getting started
+1. Open the repo in VS Code and **Reopen in Container** (Dev Containers
+   extension). This provisions PHP 8.1, Composer, and a Mailpit sidecar.
+2. Install dependencies:
+   ```
+   composer install
+   ```
+3. Run the test suite:
+   ```
+   composer test
+   ```
+4. Start the dev server (serves `public/` on port 8080):
+   ```
+   composer serve
+   ```
+   Then check `http://localhost:8080/health`.
+
+Dev email is captured by **Mailpit** — open its web UI at
+`http://localhost:8025`. No real SMTP server is configured in this
+environment.
+
 ## License
 MIT — see LICENSE.
