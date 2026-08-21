@@ -10,6 +10,16 @@
 *.sqlite3
 *.db
 
+# Runtime data — ignore contents, keep the directory skeleton
+/var/*
+!/var/.gitkeep
+!/var/data
+/var/data/*
+!/var/data/.gitkeep
+
+# PHPUnit cache
+/.phpunit.cache
+
 # Claude Code local settings
 .claude/settings.local.json
 
