@@ -57,4 +57,56 @@ final class ConfigTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $config->get('NOPE');
     }
+
+    public function testSubmissionDefaults(): void
+    {
+        $config = Config::fromEnvironment([]);
+
+        self::assertSame(65536, $config->maxBodyBytes());
+        self::assertSame(50, $config->maxFields());
+        self::assertSame(100, $config->maxFieldNameBytes());
+        self::assertSame(10240, $config->maxFieldValueBytes());
+        self::assertSame(3, $config->minSubmitSeconds());
+        self::assertSame(3600, $config->tokenMaxAgeSeconds());
+        self::assertSame(5, $config->rateIpPerMinute());
+        self::assertSame(60, $config->rateFormPerHour());
+    }
+
+    public function testSubmissionValuesAreEnvOverridable(): void
+    {
+        $config = Config::fromEnvironment([
+            'MAX_BODY_BYTES'    => '1024',
+            'RATE_IP_PER_MINUTE' => '9',
+        ]);
+
+        self::assertSame(1024, $config->maxBodyBytes());
+        self::assertSame(9, $config->rateIpPerMinute());
+    }
+
+    public function testAppSecretEmptyByDefaultInProduction(): void
+    {
+        $config = Config::fromEnvironment([]);
+
+        self::assertSame('', $config->appSecret());
+    }
+
+    public function testAppSecretHasDevFallbackOnlyInDevEnv(): void
+    {
+        $dev = Config::fromEnvironment(['APP_ENV' => 'dev']);
+        self::assertSame('dev-secret-do-not-use', $dev->appSecret());
+
+        // Any other environment keeps the empty secret until one is supplied.
+        $testing = Config::fromEnvironment(['APP_ENV' => 'testing']);
+        self::assertSame('', $testing->appSecret());
+    }
+
+    public function testExplicitAppSecretOverridesDevFallback(): void
+    {
+        $config = Config::fromEnvironment([
+            'APP_ENV'    => 'dev',
+            'APP_SECRET' => 'a-real-secret',
+        ]);
+
+        self::assertSame('a-real-secret', $config->appSecret());
+    }
 }
