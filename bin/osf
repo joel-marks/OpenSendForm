@@ -1,0 +1,159 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use OpenSendForm\Config;
+use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Storage\Database;
+use OpenSendForm\Storage\MigrationRunner;
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+/**
+ * OpenSendForm command-line tool.
+ *
+ * Plain argv parsing, no libraries. Connects to the configured database,
+ * applies any pending migrations, then dispatches a single command.
+ */
+
+$argv = $_SERVER['argv'] ?? [];
+$command = $argv[1] ?? null;
+$args = array_slice($argv, 2);
+
+if ($command === null) {
+    fwrite(STDERR, usage());
+    exit(1);
+}
+
+try {
+    $config = Config::fromEnvironment();
+    $db = Database::connect($config->dbDsn());
+    (new MigrationRunner($db, dirname(__DIR__) . '/migrations'))->migrate();
+
+    switch ($command) {
+        case 'form:create':
+            exit(cmdFormCreate($db, $args));
+        case 'form:list':
+            exit(cmdFormList($db));
+        case 'form:enable':
+            exit(cmdFormSetActive($db, $args, true));
+        case 'form:disable':
+            exit(cmdFormSetActive($db, $args, false));
+        default:
+            fwrite(STDERR, "Unknown command: {$command}\n\n" . usage());
+            exit(1);
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+/**
+ * form:create --name= --recipient= --origin= (repeatable)
+ */
+function cmdFormCreate(Database $db, array $args): int
+{
+    $name = null;
+    $recipient = null;
+    $origins = [];
+
+    foreach ($args as $arg) {
+        if (str_starts_with($arg, '--name=')) {
+            $name = substr($arg, strlen('--name='));
+        } elseif (str_starts_with($arg, '--recipient=')) {
+            $recipient = substr($arg, strlen('--recipient='));
+        } elseif (str_starts_with($arg, '--origin=')) {
+            $origins[] = substr($arg, strlen('--origin='));
+        } else {
+            fwrite(STDERR, "Unknown option: {$arg}\n\n" . usage());
+            return 1;
+        }
+    }
+
+    if ($name === null || $recipient === null || $origins === []) {
+        fwrite(STDERR, "form:create requires --name, --recipient and at least one --origin\n\n" . usage());
+        return 1;
+    }
+
+    $form = (new FormRepository($db))->createForm($name, $recipient, $origins);
+
+    fwrite(STDOUT, "Created form #{$form['id']} \"{$form['name']}\"\n");
+    fwrite(STDOUT, "  form_key:   {$form['form_key']}\n");
+    fwrite(STDOUT, "  recipient:  {$form['recipient_email']}\n");
+    fwrite(STDOUT, '  origins:    ' . implode(', ', $form['allowed_origins']) . "\n");
+
+    return 0;
+}
+
+/**
+ * form:list
+ */
+function cmdFormList(Database $db): int
+{
+    $forms = (new FormRepository($db))->listForms();
+
+    if ($forms === []) {
+        fwrite(STDOUT, "No forms yet.\n");
+        return 0;
+    }
+
+    foreach ($forms as $form) {
+        $state = $form['is_active'] === 1 ? 'active' : 'disabled';
+        fwrite(STDOUT, sprintf(
+            "#%d  %s  [%s]  %s -> %s  origins: %s\n",
+            $form['id'],
+            $form['form_key'],
+            $state,
+            $form['name'],
+            $form['recipient_email'],
+            implode(', ', $form['allowed_origins'])
+        ));
+    }
+
+    return 0;
+}
+
+/**
+ * form:enable ID / form:disable ID
+ */
+function cmdFormSetActive(Database $db, array $args, bool $active): int
+{
+    $id = $args[0] ?? null;
+    if ($id === null || !ctype_digit($id)) {
+        $verb = $active ? 'enable' : 'disable';
+        fwrite(STDERR, "form:{$verb} requires a numeric form ID\n\n" . usage());
+        return 1;
+    }
+
+    $repo = new FormRepository($db);
+    $updated = $repo->setActive((int) $id, $active);
+
+    if (!$updated) {
+        fwrite(STDERR, "No form found with ID {$id}\n");
+        return 1;
+    }
+
+    $verb = $active ? 'enabled' : 'disabled';
+    fwrite(STDOUT, "Form #{$id} {$verb}.\n");
+
+    return 0;
+}
+
+function usage(): string
+{
+    return <<<TXT
+    OpenSendForm CLI
+
+    Usage:
+      bin/osf form:create --name=NAME --recipient=EMAIL --origin=ORIGIN [--origin=ORIGIN ...]
+      bin/osf form:list
+      bin/osf form:enable ID
+      bin/osf form:disable ID
+
+    Notes:
+      --origin may be repeated to allow more than one origin.
+      An origin is scheme+host+optional port, e.g. https://example.com
+
+    TXT;
+}

@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OpenSendForm\Tests;
+
+use OpenSendForm\Storage\Database;
+use OpenSendForm\Storage\MigrationRunner;
+use PHPUnit\Framework\TestCase;
+
+final class SchemaMigrationsTest extends TestCase
+{
+    private function migrationsPath(): string
+    {
+        return dirname(__DIR__) . '/migrations';
+    }
+
+    public function testFormsAndSubmissionsMigrationsApply(): void
+    {
+        $db = Database::connect('sqlite::memory:');
+        $runner = new MigrationRunner($db, $this->migrationsPath());
+
+        $applied = $runner->migrate();
+
+        self::assertContains('002_create_forms.sql', $applied);
+        self::assertContains('003_create_submissions.sql', $applied);
+        self::assertSame([1, 2, 3], $runner->appliedVersions());
+
+        // Both tables now exist and are queryable.
+        self::assertTableExists($db, 'forms');
+        self::assertTableExists($db, 'submissions');
+    }
+
+    public function testMigrationsAreIdempotent(): void
+    {
+        $db = Database::connect('sqlite::memory:');
+        $runner = new MigrationRunner($db, $this->migrationsPath());
+
+        $runner->migrate();
+        $secondRun = $runner->migrate();
+
+        self::assertSame([], $secondRun);
+        self::assertSame([1, 2, 3], $runner->appliedVersions());
+    }
+
+    public function testSubmissionsIndexExists(): void
+    {
+        $db = Database::connect('sqlite::memory:');
+        (new MigrationRunner($db, $this->migrationsPath()))->migrate();
+
+        $row = $db->fetchOne(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = :name",
+            ['name' => 'idx_submissions_form_created']
+        );
+
+        self::assertNotNull($row);
+    }
+
+    private static function assertTableExists(Database $db, string $table): void
+    {
+        $row = $db->fetchOne(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = :name",
+            ['name' => $table]
+        );
+
+        self::assertNotNull($row, "Expected table '{$table}' to exist.");
+    }
+}
