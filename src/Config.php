@@ -46,6 +46,16 @@ final class Config
             }
         }
 
+        // APP_SECRET keys the submit-token HMAC and must be a real secret in
+        // production. We ship no secret in code; the browser installer will
+        // generate a strong one and write it to the environment on install.
+        // The only automatic value is a throwaway used in local development
+        // so the endpoint works out of the box; every other environment
+        // (including 'production') gets an empty secret until one is supplied.
+        if ($values['APP_SECRET'] === '' && $values['APP_ENV'] === 'dev') {
+            $values['APP_SECRET'] = 'dev-secret-do-not-use';
+        }
+
         return new self($values);
     }
 
@@ -57,10 +67,28 @@ final class Config
     public static function defaults(): array
     {
         return [
-            'APP_ENV'   => 'production',
-            'SMTP_HOST' => 'localhost',
-            'SMTP_PORT' => '25',
-            'DB_DSN'    => 'sqlite:' . self::defaultDatabasePath(),
+            'APP_ENV'                => 'production',
+            'SMTP_HOST'              => 'localhost',
+            'SMTP_PORT'              => '25',
+            'DB_DSN'                 => 'sqlite:' . self::defaultDatabasePath(),
+
+            // Submit-token signing secret. Empty by default; see the
+            // dev-only fallback applied in fromEnvironment().
+            'APP_SECRET'             => '',
+
+            // Request/payload caps (bytes / counts).
+            'MAX_BODY_BYTES'         => '65536',
+            'MAX_FIELDS'             => '50',
+            'MAX_FIELD_NAME_BYTES'   => '100',
+            'MAX_FIELD_VALUE_BYTES'  => '10240',
+
+            // Abuse-filter timing (seconds).
+            'MIN_SUBMIT_SECONDS'     => '3',
+            'TOKEN_MAX_AGE_SECONDS'  => '3600',
+
+            // Fixed-window rate limits.
+            'RATE_IP_PER_MINUTE'     => '5',
+            'RATE_FORM_PER_HOUR'     => '60',
         ];
     }
 
@@ -99,6 +127,51 @@ final class Config
     public function dbDsn(): string
     {
         return $this->get('DB_DSN');
+    }
+
+    public function appSecret(): string
+    {
+        return $this->get('APP_SECRET');
+    }
+
+    public function maxBodyBytes(): int
+    {
+        return (int) $this->get('MAX_BODY_BYTES');
+    }
+
+    public function maxFields(): int
+    {
+        return (int) $this->get('MAX_FIELDS');
+    }
+
+    public function maxFieldNameBytes(): int
+    {
+        return (int) $this->get('MAX_FIELD_NAME_BYTES');
+    }
+
+    public function maxFieldValueBytes(): int
+    {
+        return (int) $this->get('MAX_FIELD_VALUE_BYTES');
+    }
+
+    public function minSubmitSeconds(): int
+    {
+        return (int) $this->get('MIN_SUBMIT_SECONDS');
+    }
+
+    public function tokenMaxAgeSeconds(): int
+    {
+        return (int) $this->get('TOKEN_MAX_AGE_SECONDS');
+    }
+
+    public function rateIpPerMinute(): int
+    {
+        return (int) $this->get('RATE_IP_PER_MINUTE');
+    }
+
+    public function rateFormPerHour(): int
+    {
+        return (int) $this->get('RATE_FORM_PER_HOUR');
     }
 
     /**
