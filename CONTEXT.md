@@ -1,12 +1,13 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-21 (Increment 0, Claude Code)
+Last updated: 2026-08-23 (Increment 1, Claude Code)
 
 ## Status
-Application skeleton in place. Slim 4 app boots via a testable factory,
-a single `/health` route responds, config loads with env overrides, and
-a PDO storage layer plus migration runner are working. Test suite green
-(8 tests). No domain features yet.
+Domain data model in place. On top of the Increment 0 skeleton there is
+now a forms table and a submissions table, a form/API-key model with a
+repository, a submission repository honouring the per-form content
+toggle and retention purge, and a `bin/osf` CLI to manage forms. Test
+suite green (30 tests). No HTTP endpoints beyond `/health` yet.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -20,55 +21,80 @@ relayed by authenticated SMTP to the site owner.
 - Stack: PHP 8.1+ / Slim 4 / Composer / PHPMailer / SQLite default
   (MySQL optional via PDO). Server-rendered admin UI, no JS frameworks.
 - Distribution: release zip with vendored dependencies + browser-based
-  installer (WordPress pattern: upload, extract, visit /install,
-  installer self-locks). Softaculous is a later ambition.
+  installer (upload, extract, visit /install, self-lock).
 - Admin panel: required. Argon2id passwords, TOTP 2FA, CSRF tokens,
   rate-limited login, hardened sessions.
-- Public endpoint defences: per-client API keys, origin allowlists,
-  Cloudflare Turnstile (optional per form), honeypot, minimum
-  time-to-submit, per-IP and per-key rate limits, payload caps, strict
-  validation, email header injection prevention.
-- Mail policy: always From: the service domain, Reply-To: the
-  submitter. Never From: the submitter (DMARC).
-- Submitter email verification: REJECTED (deliverability risk + mail-
-  bomb attack surface). Replaced by: MX/DNS check on submitter domain,
+- Public endpoint defences: origin allowlists, Turnstile (optional per
+  form), honeypot, minimum time-to-submit, per-IP and per-key rate
+  limits, payload caps, strict validation, email header injection
+  prevention.
+- Form keys are PUBLIC identifiers (they appear in client-site HTML):
+  stored plain, never hashed. A "form" is the unit of configuration —
+  one record per embedded form carrying its own key, recipient, origins
+  and toggles.
+- Mail policy: always From: the service domain, Reply-To: the submitter.
+  Never From: the submitter (DMARC).
+- Submitter email verification REJECTED; replaced by MX/DNS check,
   client-side typo suggestion, optional disposable-domain blocklist.
 - No "send me a copy" feature ever (backscatter vector).
 - Storage: metadata always stored; message-content storage is a
   per-form toggle with configurable retention purge.
+- Portability: all SQL must run identically on sqlite and mysql —
+  portable types (TEXT/INTEGER), no dialect-specific syntax. Date
+  arithmetic for retention is done in PHP, not SQL.
+- Timestamps stored as UTC `Y-m-d H:i:s` TEXT (portable, lexically
+  sortable — safe for range comparisons).
 - Dev email: Mailpit only.
 
-## What exists now (Increment 0)
-- `composer.json` — deps: slim/slim ^4, slim/psr7, php-di/php-di,
-  phpunit (dev). Scripts: `composer test`, `composer serve`.
-- `public/index.php` — front controller; the only place that serves HTTP.
-- `src/AppFactory.php` — builds the Slim app + php-di container; callable
-  from tests without serving (uses `$app->handle()`).
-- `src/Routes.php` — route registration; currently only `GET /health`.
-- `src/Version.php` — single source of the version string (`0.0.1`).
-- `src/Config.php` — defaults + env overrides for APP_ENV, SMTP_HOST,
-  SMTP_PORT, DB_DSN. Default DB: `sqlite:var/data/opensendform.sqlite`.
-  Blank/false env values fall back to defaults. No secrets in code.
-- `src/Storage/Database.php` — thin PDO wrapper (exceptions on, prepared
-  statements only, sqlite + mysql). Creates the sqlite dir on connect.
-- `src/Storage/MigrationRunner.php` — numbered `.sql` files in
-  `migrations/`, applied in order, tracked in `schema_migrations`,
-  idempotent, each migration wrapped in a transaction.
-- `migrations/001_create_schema_migrations.sql` — bookkeeping table only.
-- `phpunit.xml` + `tests/` — Health, MigrationRunner, Config coverage.
-- `var/` (gitignored contents, kept via `.gitkeep`) holds runtime data.
+## What exists now
+Increment 0 (unchanged): composer project, `public/index.php`,
+`src/AppFactory.php`, `src/Routes.php` (only `GET /health`),
+`src/Version.php`, `src/Config.php`, `src/Storage/Database.php`,
+`src/Storage/MigrationRunner.php`, `migrations/001_*`, `var/`.
+
+Increment 1 additions:
+- `migrations/002_create_forms.sql` — forms table: id, form_key (UNIQUE),
+  name, recipient_email, allowed_origins (JSON array TEXT), store_content
+  (INTEGER, default 0), retention_days (INTEGER, default 30), is_active
+  (INTEGER, default 1), created_at, updated_at.
+- `migrations/003_create_submissions.sql` — submissions table: id,
+  form_id, created_at, remote_ip, origin (nullable), user_agent
+  (nullable), status (default 'received'), content (nullable JSON,
+  populated only when the form's store_content is 1). Index on
+  (form_id, created_at).
+- `src/Form/FormKey.php` — `generate()` returns `osf_` + 32 lowercase
+  hex chars from `random_bytes(16)`.
+- `src/Form/FormRepository.php` — createForm (generates key, validates
+  recipient via filter_var, normalises + validates origins, defaults
+  store_content=0/retention=30/active=1), findByKey (active only),
+  findById, listForms (newest first), setActive, normaliseOrigins.
+  Origins normalised to scheme+host+optional port (lower-cased, no path/
+  query/fragment/credentials, trailing slash stripped, dedup); invalid
+  origins and emails throw InvalidArgumentException. Prepared statements
+  throughout; rows hydrated to typed PHP values (origins JSON-decoded).
+- `src/Submission/SubmissionRepository.php` — recordSubmission (stores
+  content only when the owning form has store_content=1, else NULL),
+  purgeExpired (per-form cutoff computed in PHP, portable DELETE),
+  findById.
+- `bin/osf` — executable PHP CLI (no libraries): form:create
+  (--name/--recipient/--origin repeatable, prints generated key),
+  form:list, form:enable ID, form:disable ID; usage text on no/unknown
+  command. Connects via Config DSN and applies pending migrations first.
+- Housekeeping: composer `test` script now runs
+  `XDEBUG_MODE=off phpunit` to silence Xdebug step-debug warnings.
 
 ## Known gaps / not built (by design this sprint)
-- No submission endpoint, forms/keys schema, mail sending, admin UI,
-  installer, or any route beyond `/health`.
+- No submission HTTP endpoint, validation/abuse middleware, mail
+  sending, Turnstile, admin UI or installer.
+- No repository method to toggle store_content or retention_days yet
+  (arrives with the admin UI); defaults are applied on create.
 
 ## Open items
-- Increment 1 (schema + form/API-key model) not yet run.
+- Increment 2 (submission endpoint + validation/abuse middleware) next.
 
 ## Planned increment sequence (subject to revision)
-0. Composer/Slim skeleton, PHPUnit harness, SQLite storage layer,
-   dev-server script. — DONE
-1. Schema + form/API-key model.
+0. Composer/Slim skeleton, PHPUnit harness, SQLite storage. — DONE
+1. Schema + form/API-key model. — DONE
 2. Submission endpoint + validation/abuse middleware stack.
 3. SMTP relay (PHPMailer) with retry.
 4. Turnstile integration.
