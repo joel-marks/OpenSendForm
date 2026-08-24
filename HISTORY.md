@@ -484,3 +484,74 @@
   unchanged — the architect's rulings for this patch were prescriptive, not
   open questions, so nothing new was logged there.
 - Deviations from prompt: none.
+
+## 2026-08-24 — Increment 5b: admin screens + design system
+- Branch: feature/increment-5b-admin-ui (off latest main, after PR #11).
+- Vendored assets (authorised, both MIT, licence headers + pinned versions
+  in-file and in CONTEXT): Pico.css v2.0.6 → `public/assets/vendor/
+  pico.min.css`; qrcode-generator by Kazuhiko Arase v1.4.4 →
+  `public/assets/vendor/qrcode.js`. Fetched from npm at those pinned
+  releases; no CDN references at runtime. No Composer dependencies added.
+- Design system: admin layout now loads Pico + one overrides file
+  (`public/assets/admin.css`) defining a brand palette via CSS custom
+  properties for BOTH light and dark schemes (auto via prefers-color-scheme
+  plus a manual toggle). Pre-paint `theme.js` (blocking, in <head>) applies
+  the stored choice before first paint and wires the nav toggle;
+  `admin.js` (deferred) holds all other progressive enhancements. A top-nav
+  partial (`_nav.php`: Dashboard/Forms/Submissions + theme toggle + admin
+  name + CSRF logout) and a flash partial (`_flash.php`) were added, backed
+  by a `Flash` session helper and an `AdminView` chrome renderer. Strict
+  `Content-Security-Policy` (`default-src 'self'; script-src 'self';
+  style-src 'self'; img-src 'self' data:; frame-ancestors 'none'`) added to
+  SecurityHeadersMiddleware — admin only; the public JSON API stays CSP-free.
+  Every screen works with JS disabled; no inline scripts/styles/handlers.
+- Dashboard (`AdminController::dashboard`): counts of active forms,
+  submissions today (cutoff from the injected clock), and failed/dead
+  totals, plus the 10 most recent failed/dead submissions (metadata only)
+  linking to the filtered submissions view.
+- Forms screens (`FormsController` + `forms_list.php`/`form_edit.php`):
+  list (key click-to-copy, recipient, active + Turnstile badges),
+  create/edit (origins textarea round-tripped to the JSON array,
+  store_content explained inline, retention_days [validated 1–3650],
+  is_active, Turnstile sitekey+secret with both-or-neither enforcement).
+  The secret is write-only — never echoed; a set/not-set hint is shown and
+  a blank secret on edit keeps the stored one, clearing the sitekey
+  disables Turnstile. Validation failures re-render inline (422) with input
+  preserved (never the secret). Enable/disable from the list.
+- Submissions screen (`SubmissionsController` + `submissions.php`):
+  paginated 50/page (id, form, created, status, attempts, truncated last
+  error), filter by status and form; per-row Retry (POST) and bulk "Retry
+  all due now" both drive DeliveryService (guarded when no mailer is wired)
+  and redirect back to the same filtered view. No stored content is ever
+  displayed — WHY noted in a template comment (in-flight payload / privacy).
+- TOTP UX (the three architect-logged items): (a) setup renders the
+  otpauth URI as an SVG QR client-side from a data-attribute via the
+  vendored qrcode.js, manual key + URI kept as the no-JS fallback, secret
+  never leaves the page; (b) login and setup code fields upgrade to six
+  auto-advancing/paste-aware/auto-submitting one-digit boxes built from the
+  plain input (degrade to one field with JS off); (c) recovery-codes screen
+  gained copy-all, download-as-.txt (Blob URL) and a "saved" checkbox
+  gating the continue link, codes still plainly listed without JS.
+- Repository additions (no controller-side validation): FormRepository
+  `updateForm`, extended `createForm` (store_content/retention/active),
+  retention-range validation, `countActive`; SubmissionRepository
+  `countSince`/`countByStatus`/`recentByStatuses` and
+  `listPage`/`countFiltered` (portable status+form filter, all
+  metadata-only, content never selected). `AppFactory` registers `Flash`.
+- Tests (+26, 265 total; 1912 assertions): `tests/Admin/AdminUiTest.php`
+  covers dashboard counts, forms list/create/edit happy paths + validation
+  failures (bad email, bad origin, Turnstile one-key-only) with input
+  preserved, enable/disable (incl. CSRF reject), the write-only secret
+  (never echoed, kept on blank edit, cleared with the sitekey), submissions
+  pagination + status/form filters, content-never-shown, per-row retry
+  (success + repeat-failure via the scriptable FakeMailer) and bulk
+  retry-due, CSP present on admin / absent on the public API, vendored +
+  enhancement assets existing and referenced by the layout, and templates
+  carrying no inline handlers or inline scripts. Full suite green.
+- Docs: CONTEXT.md overwritten (new Admin UI section, vendored-asset
+  pins), this HISTORY entry appended, README Admin section expanded
+  (screens overview, theming note, CLI+UI provisioning). QUESTIONS.md
+  unchanged — all prior items resolved; no new blockers (the retention
+  bounds and the "keep secret on blank edit" convenience were in-scope
+  UX decisions, not architecture questions).
+- Deviations from prompt: none.
