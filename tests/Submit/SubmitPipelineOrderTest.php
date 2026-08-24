@@ -11,6 +11,7 @@ use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
 use OpenSendForm\Submission\SubmissionRepository;
+use OpenSendForm\Submit\Stages\DeliveryStage;
 use OpenSendForm\Submit\Stages\EmailValidationStage;
 use OpenSendForm\Submit\Stages\FieldHygieneStage;
 use OpenSendForm\Submit\Stages\FormLookupStage;
@@ -64,6 +65,7 @@ final class SubmitPipelineOrderTest extends TestCase
             TokenStage::class,
             EmailValidationStage::class,
             StoreStage::class,
+            DeliveryStage::class,
         ], $classes);
     }
 }
