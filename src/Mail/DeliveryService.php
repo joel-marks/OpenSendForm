@@ -56,10 +56,13 @@ final class DeliveryService
     /**
      * Attempt to deliver a single stored submission.
      *
-     * On success: status 'sent', attempts incremented, last_attempt_at set.
+     * On success: status 'sent', attempts incremented, last_attempt_at set;
+     * the stored content is then cleared unless the form's store_content is
+     * on (the toggle means "retain content after successful delivery").
      * On failure: attempts incremented; if that reaches MAIL_MAX_ATTEMPTS the
      * submission is marked 'dead', otherwise 'failed' with next_attempt_at
-     * scheduled per the backoff list.
+     * scheduled per the backoff list. Content is left untouched on both
+     * failure paths so a retry — or operator recovery — still has it.
      *
      * @return string One of the RESULT_* constants.
      */
@@ -95,6 +98,9 @@ final class DeliveryService
         }
 
         $this->submissions->markSent($submissionId, $attempts, $attemptedAt);
+        if ((int) $form['store_content'] !== 1) {
+            $this->submissions->clearContent($submissionId);
+        }
 
         return self::RESULT_SENT;
     }

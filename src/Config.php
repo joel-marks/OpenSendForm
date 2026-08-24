@@ -102,6 +102,10 @@ final class Config
     {
         return [
             'APP_ENV'                => 'production',
+            // Primary delivery switch: mail is attempted only when this is
+            // truthy AND SMTP_HOST is non-empty (the host check remains a
+            // guard, not the primary switch).
+            'MAIL_ENABLED'           => '1',
             'SMTP_HOST'              => 'localhost',
             'SMTP_PORT'              => '25',
             'DB_DSN'                 => 'sqlite:' . self::defaultDatabasePath(),
@@ -163,6 +167,15 @@ final class Config
     public function appEnv(): string
     {
         return $this->get('APP_ENV');
+    }
+
+    /**
+     * Primary mail delivery switch. Delivery is attempted only when this is
+     * true AND smtpHost() is non-empty; the host stays a secondary guard.
+     */
+    public function mailEnabled(): bool
+    {
+        return in_array(strtolower(trim($this->get('MAIL_ENABLED'))), ['1', 'true', 'yes', 'on'], true);
     }
 
     public function smtpHost(): string

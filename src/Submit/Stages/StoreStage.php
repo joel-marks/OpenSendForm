@@ -13,10 +13,12 @@ use OpenSendForm\Submit\SubmitOutcome;
  * Stage (i): store the submission.
  *
  * User fields (reserved _osf_* already removed) are serialised to JSON and
- * handed to the repository, which persists the content column only when the
- * form's store_content toggle is on; metadata is always recorded. Status is
- * 'received'; the delivery stage that follows may advance it. The new row's
- * id is stashed on the context so that stage knows what to send.
+ * handed to the repository, which always persists them as the in-flight
+ * delivery payload (metadata is always recorded too); the delivery service
+ * clears content after a successful send unless the form's store_content
+ * toggle is on. Status is 'received'; the delivery stage that follows may
+ * advance it. The new row's id is stashed on the context so that stage
+ * knows what to send.
  *
  * This stage does not terminate the pipeline: it returns null so the always
  * present delivery stage runs next and produces the success outcome.

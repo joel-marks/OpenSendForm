@@ -54,9 +54,12 @@ already points SMTP at Mailpit (`SMTP_HOST=mailpit`, `SMTP_PORT=1025`).
    php bin/osf form:create --name="Contact" \
      --recipient="owner@example.com" --origin="http://localhost:8080"
    ```
-   Submissions store metadata only by default; the relayed email lists the
-   submitted fields only when the form's `store_content` is on. Until the
-   admin UI ships you can enable it directly:
+   Metadata is always stored, and submitted content is always held
+   in-flight so the relayed email carries the submitted fields and a failed
+   send can be retried. The form's `store_content` toggle only decides
+   whether that content is *retained* after a successful delivery — off by
+   default, it's cleared once the email is sent; on, it stays. Until the
+   admin UI ships you can enable retention directly:
    ```
    sqlite3 var/data/opensendform.sqlite "UPDATE forms SET store_content = 1;"
    ```

@@ -20,35 +20,13 @@ final class SubmissionRepositoryTest extends TestCase
         (new MigrationRunner($this->db, dirname(__DIR__, 2) . '/migrations'))->migrate();
     }
 
-    public function testContentDiscardedWhenFormDoesNotStoreContent(): void
+    public function testContentAlwaysStoredAtRecordTimeRegardlessOfStoreContentToggle(): void
     {
+        // store_content is OFF by default; content is still persisted as the
+        // in-flight delivery payload — the toggle governs post-delivery
+        // retention, not initial storage.
         $forms = new FormRepository($this->db);
         $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
-
-        $subs = new SubmissionRepository($this->db);
-        $id = $subs->recordSubmission(
-            $form['id'],
-            '203.0.113.7',
-            'https://example.com',
-            'Mozilla/5.0',
-            '{"message":"hello"}'
-        );
-
-        $row = $subs->findById($id);
-        self::assertNotNull($row);
-        self::assertNull($row['content']);
-        // Metadata is always kept.
-        self::assertSame('203.0.113.7', $row['remote_ip']);
-        self::assertSame('https://example.com', $row['origin']);
-        self::assertSame('Mozilla/5.0', $row['user_agent']);
-        self::assertSame('received', $row['status']);
-    }
-
-    public function testContentStoredWhenFormStoresContent(): void
-    {
-        $forms = new FormRepository($this->db);
-        $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
-        $this->enableStoreContent($form['id']);
 
         $subs = new SubmissionRepository($this->db);
         $id = $subs->recordSubmission(
@@ -62,6 +40,32 @@ final class SubmissionRepositoryTest extends TestCase
         $row = $subs->findById($id);
         self::assertNotNull($row);
         self::assertSame('{"message":"hello"}', $row['content']);
+        // Metadata is always kept.
+        self::assertSame('203.0.113.7', $row['remote_ip']);
+        self::assertSame('https://example.com', $row['origin']);
+        self::assertSame('Mozilla/5.0', $row['user_agent']);
+        self::assertSame('received', $row['status']);
+    }
+
+    public function testClearContentNullsTheColumn(): void
+    {
+        $forms = new FormRepository($this->db);
+        $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        $subs = new SubmissionRepository($this->db);
+        $id = $subs->recordSubmission(
+            $form['id'],
+            '203.0.113.7',
+            'https://example.com',
+            'Mozilla/5.0',
+            '{"message":"hello"}'
+        );
+
+        $subs->clearContent($id);
+
+        $row = $subs->findById($id);
+        self::assertNotNull($row);
+        self::assertNull($row['content']);
     }
 
     public function testPurgeExpiredHonoursPerFormRetention(): void
@@ -89,14 +93,6 @@ final class SubmissionRepositoryTest extends TestCase
         self::assertSame(1, $deleted);
         self::assertSame(1, $this->countFor($shortForm['id']));
         self::assertSame(2, $this->countFor($longForm['id']));
-    }
-
-    private function enableStoreContent(int $formId): void
-    {
-        $this->db->execute(
-            'UPDATE forms SET store_content = 1 WHERE id = :id',
-            ['id' => $formId]
-        );
     }
 
     private function setRetention(int $formId, int $days): void

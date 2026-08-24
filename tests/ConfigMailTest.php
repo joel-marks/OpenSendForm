@@ -9,8 +9,9 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Coverage for the Increment 3 mail configuration: defaults, env overrides,
- * the encryption/backoff parsing, and the explicit fromValues() constructor
- * (which, unlike fromEnvironment(), honours an intentionally empty value).
+ * the encryption/backoff parsing, MAIL_ENABLED, and the explicit
+ * fromValues() constructor (which, unlike fromEnvironment(), honours an
+ * intentionally empty value).
  */
 final class ConfigMailTest extends TestCase
 {
@@ -18,6 +19,7 @@ final class ConfigMailTest extends TestCase
     {
         $config = Config::fromEnvironment([]);
 
+        self::assertTrue($config->mailEnabled());
         self::assertSame('', $config->smtpUser());
         self::assertSame('', $config->smtpPass());
         self::assertSame('none', $config->smtpEncryption());
@@ -82,5 +84,15 @@ final class ConfigMailTest extends TestCase
         $config = Config::fromValues(['APP_ENV' => 'dev']);
 
         self::assertSame('dev-secret-do-not-use', $config->appSecret());
+    }
+
+    public function testMailEnabledCanBeDisabledViaEnvironment(): void
+    {
+        self::assertFalse(Config::fromEnvironment(['MAIL_ENABLED' => '0'])->mailEnabled());
+    }
+
+    public function testMailEnabledExplicitEmptyViaFromValuesIsFalsy(): void
+    {
+        self::assertFalse(Config::fromValues(['MAIL_ENABLED' => ''])->mailEnabled());
     }
 }
