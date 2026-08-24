@@ -23,6 +23,10 @@ final class FormRepository
         $this->db = $db;
     }
 
+    /** Bounds for retention_days (inclusive). */
+    private const RETENTION_MIN = 1;
+    private const RETENTION_MAX = 3650;
+
     /**
      * Create a form, generating its public key.
      *
@@ -30,22 +34,21 @@ final class FormRepository
      *        caller; each is normalised and validated.
      * @return array<string, mixed> The created form (hydrated).
      *
-     * @throws InvalidArgumentException on a bad recipient email or origin,
-     *         or when no origins are supplied.
+     * @throws InvalidArgumentException on a bad recipient email, origin or
+     *         retention value, or when no origins are supplied.
      */
-    public function createForm(string $name, string $recipientEmail, array $allowedOrigins): array
-    {
-        $name = trim($name);
-        if ($name === '') {
-            throw new InvalidArgumentException('Form name must not be empty.');
-        }
-
-        $recipientEmail = trim($recipientEmail);
-        if (filter_var($recipientEmail, FILTER_VALIDATE_EMAIL) === false) {
-            throw new InvalidArgumentException("Invalid recipient email: {$recipientEmail}");
-        }
-
+    public function createForm(
+        string $name,
+        string $recipientEmail,
+        array $allowedOrigins,
+        bool $storeContent = false,
+        int $retentionDays = 30,
+        bool $isActive = true
+    ): array {
+        $name = $this->normaliseName($name);
+        $recipientEmail = $this->normaliseRecipient($recipientEmail);
         $origins = $this->normaliseOrigins($allowedOrigins);
+        $retentionDays = $this->normaliseRetentionDays($retentionDays);
 
         $key = FormKey::generate();
         $now = self::now();
@@ -62,9 +65,9 @@ final class FormRepository
                 'name'            => $name,
                 'recipient_email' => $recipientEmail,
                 'allowed_origins' => json_encode($origins, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-                'store_content'   => 0,
-                'retention_days'  => 30,
-                'is_active'       => 1,
+                'store_content'   => $storeContent ? 1 : 0,
+                'retention_days'  => $retentionDays,
+                'is_active'       => $isActive ? 1 : 0,
                 'created_at'      => $now,
                 'updated_at'      => $now,
             ]
@@ -79,6 +82,66 @@ final class FormRepository
         }
 
         return $form;
+    }
+
+    /**
+     * Update a form's editable fields (everything but its key and Turnstile
+     * pair, which has its own both-or-neither setter). Reuses the same
+     * normalisation/validation as createForm so controllers never duplicate it.
+     *
+     * @param array<int, string> $allowedOrigins
+     * @return bool True if a row was updated.
+     *
+     * @throws InvalidArgumentException on a bad recipient email, origin or
+     *         retention value, or when no origins are supplied.
+     */
+    public function updateForm(
+        int $id,
+        string $name,
+        string $recipientEmail,
+        array $allowedOrigins,
+        bool $storeContent,
+        int $retentionDays,
+        bool $isActive
+    ): bool {
+        $name = $this->normaliseName($name);
+        $recipientEmail = $this->normaliseRecipient($recipientEmail);
+        $origins = $this->normaliseOrigins($allowedOrigins);
+        $retentionDays = $this->normaliseRetentionDays($retentionDays);
+
+        $statement = $this->db->execute(
+            'UPDATE forms
+                SET name = :name,
+                    recipient_email = :recipient_email,
+                    allowed_origins = :allowed_origins,
+                    store_content = :store_content,
+                    retention_days = :retention_days,
+                    is_active = :is_active,
+                    updated_at = :now
+              WHERE id = :id',
+            [
+                'name'            => $name,
+                'recipient_email' => $recipientEmail,
+                'allowed_origins' => json_encode($origins, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                'store_content'   => $storeContent ? 1 : 0,
+                'retention_days'  => $retentionDays,
+                'is_active'       => $isActive ? 1 : 0,
+                'now'             => self::now(),
+                'id'              => $id,
+            ]
+        );
+
+        return $statement->rowCount() > 0;
+    }
+
+    /**
+     * Count active forms (for the dashboard).
+     */
+    public function countActive(): int
+    {
+        $row = $this->db->fetchOne('SELECT COUNT(*) AS c FROM forms WHERE is_active = 1');
+
+        return (int) ($row['c'] ?? 0);
     }
 
     /**
@@ -188,6 +251,48 @@ final class FormRepository
         );
 
         return $statement->rowCount() > 0;
+    }
+
+    /**
+     * @throws InvalidArgumentException if the name is empty after trimming.
+     */
+    private function normaliseName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new InvalidArgumentException('Form name must not be empty.');
+        }
+
+        return $name;
+    }
+
+    /**
+     * @throws InvalidArgumentException if the recipient is not a valid email.
+     */
+    private function normaliseRecipient(string $recipientEmail): string
+    {
+        $recipientEmail = trim($recipientEmail);
+        if (filter_var($recipientEmail, FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException("Invalid recipient email: {$recipientEmail}");
+        }
+
+        return $recipientEmail;
+    }
+
+    /**
+     * @throws InvalidArgumentException if retention is outside the allowed range.
+     */
+    private function normaliseRetentionDays(int $retentionDays): int
+    {
+        if ($retentionDays < self::RETENTION_MIN || $retentionDays > self::RETENTION_MAX) {
+            throw new InvalidArgumentException(sprintf(
+                'Retention must be between %d and %d days.',
+                self::RETENTION_MIN,
+                self::RETENTION_MAX
+            ));
+        }
+
+        return $retentionDays;
     }
 
     /**
