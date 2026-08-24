@@ -44,6 +44,55 @@ Dev email is captured by **Mailpit** — open its web UI at
 `http://localhost:8025`. No real SMTP server is configured in this
 environment.
 
+### End-to-end local test (submission → email)
+
+Drive a real submission all the way to a captured email. The dev container
+already points SMTP at Mailpit (`SMTP_HOST=mailpit`, `SMTP_PORT=1025`).
+
+1. Create a form and note its `form_key`:
+   ```
+   php bin/osf form:create --name="Contact" \
+     --recipient="owner@example.com" --origin="http://localhost:8080"
+   ```
+   Submissions store metadata only by default; the relayed email lists the
+   submitted fields only when the form's `store_content` is on. Until the
+   admin UI ships you can enable it directly:
+   ```
+   sqlite3 var/data/opensendform.sqlite "UPDATE forms SET store_content = 1;"
+   ```
+
+2. Start the dev server:
+   ```
+   composer serve
+   ```
+
+3. Fetch a submit token (`Origin` must match the form's allowlist):
+   ```
+   curl "http://localhost:8080/v1/form/<form_key>/token" \
+     -H "Origin: http://localhost:8080"
+   ```
+
+4. Post a submission with that token. Wait ~3 seconds after fetching it —
+   submissions faster than `MIN_SUBMIT_SECONDS` are treated as bots and
+   silently dropped:
+   ```
+   curl "http://localhost:8080/v1/form/<form_key>/submit" \
+     -H "Origin: http://localhost:8080" \
+     --data-urlencode "_osf_token=<token>" \
+     --data-urlencode "name=Ada Lovelace" \
+     --data-urlencode "email=ada@example.com" \
+     --data-urlencode "message=Hello from a real submission"
+   ```
+   The response is `{"ok":true}`.
+
+5. Open Mailpit at `http://localhost:8025` — the relayed email is waiting,
+   `From: OpenSendForm`, with the submitter's address as `Reply-To`.
+
+`php bin/osf submissions:list` shows the row move to status `sent`. If SMTP
+is unreachable it is left `failed` with a scheduled retry; `php bin/osf
+mail:retry` (wire it to cron on cPanel) re-sends everything due. A quick
+transport check without a submission: `php bin/osf mail:test --to=you@example.com`.
+
 ## Public API (v1)
 
 The public API is JSON-only and CORS-aware. All responses share one shape:
@@ -88,8 +137,14 @@ retry. Other failures return specific codes: `invalid_fields`,
 `unknown_form`, `origin_not_allowed`, `rate_limited`, `payload_too_large`,
 `method_not_allowed`, `invalid_email`, `email_domain_invalid`.
 
-Submissions stop at status `received` for now; SMTP relay arrives in a
-later increment. `OPTIONS` on both routes returns a `204` CORS preflight.
+A stored submission is relayed by authenticated SMTP to the form's
+recipient. One send is attempted in-request; a failure never changes the
+`{"ok":true}` response — the submission is safely stored and retried by the
+operator's `mail:retry` cron. `From` is always the configured service
+address; the submitter's `email` field, when valid, becomes `Reply-To` and
+nothing else the submitter typed can reach a mail header. With no SMTP host
+configured the app runs storage-only and submissions stay at `received`.
+`OPTIONS` on both routes returns a `204` CORS preflight.
 
 ## License
 MIT — see LICENSE.

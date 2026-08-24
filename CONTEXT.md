@@ -1,23 +1,14 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (chore/ci-workflow, Claude Code)
+Last updated: 2026-08-24 (feature/increment-3-mail, Claude Code)
 
 ## Status
-The public submission endpoint is live end-to-end (storage only; no mail
-yet). On top of the Increment 1 data model there is a versioned v1 API: a
-token endpoint, CORS preflights, and `POST /v1/form/{form_key}/submit`
-driven by an ordered validation/abuse pipeline. Submissions that pass are
-stored at status `received`. Test suite green (88 tests). CI now runs
-that suite automatically on every PR and on push to main.
-
-## CI
-`.github/workflows/ci.yml` — job `tests` on ubuntu-latest, matrix PHP 8.1
-+ 8.2 (fail-fast off, so a break on either floor or newer runtime is
-visible independently). Triggers: pull_request, push to main. Steps:
-checkout, `shivammathur/setup-php@v2` (pdo_sqlite, coverage off,
-XDEBUG_MODE=off), Composer cache keyed on `composer.lock`, `composer
-install --no-interaction --prefer-dist`, `composer test`. README badge
-added under the title, linking to the workflow's Actions page.
+The public submission endpoint is live end-to-end and now RELAYS BY EMAIL.
+On top of the Increment 1 data model there is a versioned v1 API (token
+endpoint, CORS preflights, `POST /v1/form/{form_key}/submit`) driven by an
+ordered validation/abuse pipeline. Submissions that pass are stored, then a
+single in-request SMTP send is attempted; failures are retried by an
+operator cron. Test suite green (120 tests). CI runs it on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -34,91 +25,83 @@ relayed by authenticated SMTP to the site owner.
   config (key, recipient, origins, toggles).
 - Response contract (FROZEN — embed JS builds against it): JSON only.
   Success `{"ok":true}`; failure `{"ok":false,"error":{"code","message"}}`.
-  Codes are stable snake_case; messages may change. HTTP: 200 ok, 400
-  validation, 403 key/origin, 405 method, 413 too large, 429 rate limited.
+  HTTP: 200 ok, 400 validation, 403 key/origin, 405 method, 413 too large,
+  429 rate limited.
 - Bot-facing checks fail SILENTLY (normal `{"ok":true}`, nothing stored):
   filled honeypot; missing / forged / too-young token. EXCEPTION: an
-  authentic but EXPIRED token returns an honest `400 token_expired` so a
-  real user with a long-open page can refresh and retry.
-- Rate limiting uses REMOTE_ADDR only; trusted-proxy/forwarded-for support
-  is a deliberate future config concern (noted in code).
+  authentic but EXPIRED token returns an honest `400 token_expired`.
+- Rate limiting uses REMOTE_ADDR only (trusted-proxy support is future work).
 - Storage: metadata always stored; message content only when the form's
   store_content toggle is on. Retention purge computed per form in PHP.
 
-## What exists now
-Increments 0–1 (unchanged): composer project, `public/index.php`,
-`AppFactory`, `Config`, `Version`, `Storage/{Database,MigrationRunner}`,
-`migrations/001–003`, `Form/{FormKey,FormRepository}`,
-`Submission/SubmissionRepository`, `bin/osf` CLI, `GET /health`.
-
-Increment 2 additions:
-- Config: `APP_SECRET` (empty default; dev-only fallback
-  'dev-secret-do-not-use' when APP_ENV=dev — installer generates the real
-  one) plus env-overridable MAX_BODY_BYTES (65536), MAX_FIELDS (50),
-  MAX_FIELD_NAME_BYTES (100), MAX_FIELD_VALUE_BYTES (10240),
-  MIN_SUBMIT_SECONDS (3), TOKEN_MAX_AGE_SECONDS (3600),
-  RATE_IP_PER_MINUTE (5), RATE_FORM_PER_HOUR (60). Typed accessors added.
-- `migrations/004_create_rate_counters.sql` — bucket TEXT, window_start
-  INTEGER, count INTEGER, PK (bucket, window_start).
-- `src/Clock/{Clock,SystemClock}` — injectable unix-seconds clock.
-- `src/RateLimit/RateLimiter` — fixed-window increment-and-check
-  (`hit(bucket,limit,windowSeconds)`); portable read-then-write increment;
-  per-bucket opportunistic pruning of stale windows.
-- `src/Security/SubmitToken` — issue/verify `<ts>.<hmac_sha256(ts.key,
-  secret)>`; VALID/TOO_YOUNG/EXPIRED/INVALID; hash_equals before age.
-- `src/Validation/{DnsChecker,SystemDnsChecker}` — MX then A lookup; real
-  DNS never hit in tests (tests/Support/FakeDnsChecker).
-- `src/Http/OriginMatcher` — normalise/resolve/match origins (Origin
-  header, Referer fallback). `src/Http/ApiResponse` — JSON contract + CORS.
-- `src/Submit/` — Stage interface, SubmitContext, SubmitOutcome, nine
-  Stages/ classes, and SubmitPipeline (assembles + runs the fixed order).
-- Routes (v1): `GET /v1/form/{form_key}/token`, `POST
-  /v1/form/{form_key}/submit`, and an OPTIONS preflight for each. The
-  submit route is also mapped for other verbs so a wrong method returns
-  the contract's 405. The form key travels only in the URL for both
-  routes — never in the body — so both preflights resolve one specific
-  form and echo its allowed origin exactly (see "CORS preflight" below).
-- AppFactory wires Database/Clock/DnsChecker/repositories/RateLimiter/
-  SubmitToken/SubmitPipeline into the container; `create()` accepts
-  optional Database/DnsChecker/Clock for test injection.
+## Mail relay (Increment 3)
+- Mail policy (hard rules): From is ALWAYS the configured service address;
+  Reply-To is the submitter's `email` field only when syntactically valid;
+  no other submitter data reaches any header. Subject is the form name with
+  control chars stripped; body is a plain-text field listing with names and
+  values sanitised and capped. `Mail\MessageBuilder` enforces this and is the
+  last line of defence alongside (not instead of) PHPMailer's own checks.
+- `Mail\MailerInterface` (`send(to, replyTo?, subject, body)`, throws on
+  failure) with `PhpMailerMailer` (SMTP from Config, 15s timeout, exceptions
+  on, `html5` address validator so `noreply@localhost` is accepted) and a
+  `tests/Support/FakeMailer` double (records calls, scriptable to fail).
+- `Mail\DeliveryService::attemptDelivery(id)` loads submission+form, builds
+  the message, sends. Success → status `sent`. Failure → `failed`, attempts+1,
+  last_error, next_attempt_at per backoff — unless attempts reach
+  MAIL_MAX_ATTEMPTS, then `dead`. `retryDue(now?)` re-attempts every `failed`
+  row whose next_attempt_at is due (fake-clock testable) and returns a count
+  summary. Backoff = MAIL_RETRY_BACKOFF_MINUTES list, last value repeating.
+- Synchronous-first, no queue: `Submit\Stages\DeliveryStage` is the terminal
+  pipeline stage. StoreStage now returns null (stashing the new id on the
+  context) and DeliveryStage makes at most one send then ALWAYS returns
+  success, so a delivery failure never changes the submitter's `{"ok":true}`.
+  Skips (leaving status `received`) when no mailer is wired, SMTP_HOST is
+  empty, or nothing was stored.
+- Config: SMTP_USER, SMTP_PASS, SMTP_ENCRYPTION (none|starttls|smtps, default
+  none), MAIL_FROM_ADDRESS (noreply@localhost), MAIL_FROM_NAME (OpenSendForm),
+  MAIL_MAX_ATTEMPTS (5), MAIL_RETRY_BACKOFF_MINUTES (1,5,30,120). New
+  `Config::fromValues()` honours explicit empties (env parser still protects
+  defaults); front controller wires a real mailer only when SMTP_HOST != ''.
+- Migration 005 adds submissions.attempts / last_attempt_at / next_attempt_at
+  / last_error (one portable ADD COLUMN each).
+- `bin/osf`: `mail:retry` (runs retryDue, prints summary, exit 0 — for cron),
+  `mail:test --to=ADDRESS`, `submissions:list [--status=X]` (metadata only,
+  never content).
 
 ## Submission pipeline order (enforced + tested)
-method/body size → field hygiene (+ reserved `_osf_token/_osf_hp` split) →
-form lookup by the URL's form_key → origin allowlist (sets CORS) → per-IP
-then per-form rate limits → honeypot → token → email (syntax + MX/A, only
-if an `email` field is present) → store. Cheapest/most-abuse-relevant
-first; storage last. Order is locked by SubmitPipelineOrderTest and proven
-behaviourally (bad origin + filled honeypot → origin_not_allowed).
+method/body size → field hygiene (+ reserved `_osf_token/_osf_hp`) → form
+lookup by URL key → origin allowlist (sets CORS) → per-IP then per-form rate
+limits → honeypot → token → email (syntax + MX/A, if `email` field present) →
+store (non-terminal) → delivery (terminal, always succeeds). Locked by
+SubmitPipelineOrderTest.
 
-## CORS preflight
-Both `/v1/form/{form_key}/token` and `/v1/form/{form_key}/submit` preflight
-identically: look up the ACTIVE form by the URL's key, match Origin (or
-Referer fallback) against that form's own allowlist, and echo
-`Access-Control-Allow-Origin` only on a match. Unknown/inactive key or a
-non-matching origin: no ACAO header, nothing revealed about which origins
-are registered anywhere else in the installation. This replaced an earlier
-any-active-form preflight match for `/v1/submit` (form key used to travel
-in the body) that was rejected as an origin-enumeration risk — see
-QUESTIONS.md and the HISTORY.md entry for 2026-08-24.
+## What exists now
+Increments 0–2 unchanged (see HISTORY). Increment 3 adds `src/Mail/*`
+(MessageBuilder, BuiltMessage, MailerInterface, PhpMailerMailer,
+DeliveryService), `Submit/Stages/DeliveryStage`, migration 005, the Config
+mail keys + fromValues, SubmissionRepository mail-state methods
+(markSent/markFailed/markDead/findDueForRetry/listSummaries), the three
+`bin/osf` commands, and phpmailer/phpmailer ^6 (the only new dependency).
 
 ## Known gaps / not built (by design this sprint)
-- No mail sending (submissions stop at `received`), Turnstile,
-  disposable-domain blocklist, admin UI, installer, embed snippet/JS,
-  no-JS fallback, or trusted-proxy IP handling.
-- No repository method yet to toggle store_content/retention (arrives with
-  admin UI); defaults applied on create.
-- Multipart parsing relies on PHP/Slim's parsed body; raw multipart is not
-  re-parsed and file uploads are out of scope.
+- Turnstile, disposable-domain blocklist, admin UI, installer, embed
+  snippet/JS, trusted-proxy IP handling — all future increments.
+- Delivery reads the stored `content`; with store_content OFF (the default)
+  the email lists no fields and retries carry none. Flagged in QUESTIONS.md
+  as an architecture decision (item 1).
+- No repository method to toggle store_content/retention yet (admin UI).
+- DKIM/SPF guidance deferred to the installer increment.
 
 ## Open items
-- QUESTIONS.md: no open items currently.
-- Increment 3 (SMTP relay via PHPMailer with retry) next.
+- QUESTIONS.md: two Increment-3 items open (delivery vs store_content; and the
+  storage-only / empty-SMTP_HOST config seam — resolved in code, confirm).
+- Increment 4 (Turnstile) next.
 
 ## Planned increment sequence (subject to revision)
 0. Composer/Slim skeleton, PHPUnit harness, SQLite storage. — DONE
 1. Schema + form/API-key model. — DONE
 2. Submission endpoint + validation/abuse middleware stack. — DONE
-3. SMTP relay (PHPMailer) with retry.
+3. SMTP relay (PHPMailer) with retry. — DONE
 4. Turnstile integration.
 5. Admin panel + auth (argon2id, TOTP, CSRF).
 6. Browser installer + environment autodetection.

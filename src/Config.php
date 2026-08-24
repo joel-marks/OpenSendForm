@@ -46,6 +46,40 @@ final class Config
             }
         }
 
+        return self::finalise($values);
+    }
+
+    /**
+     * Build configuration from an explicit, fully-trusted override map.
+     *
+     * Unlike fromEnvironment(), an explicitly supplied empty string IS
+     * honoured (it does not fall back to the default). This is the seam
+     * tests and programmatic callers use to express states the environment
+     * parser deliberately protects against — e.g. an empty SMTP_HOST to
+     * request storage-only operation.
+     *
+     * @param array<string,string> $overrides
+     */
+    public static function fromValues(array $overrides): self
+    {
+        $values = self::defaults();
+
+        foreach ($overrides as $key => $value) {
+            if (array_key_exists($key, $values)) {
+                $values[$key] = (string) $value;
+            }
+        }
+
+        return self::finalise($values);
+    }
+
+    /**
+     * Apply cross-cutting post-processing and construct.
+     *
+     * @param array<string,string> $values
+     */
+    private static function finalise(array $values): self
+    {
         // APP_SECRET keys the submit-token HMAC and must be a real secret in
         // production. We ship no secret in code; the browser installer will
         // generate a strong one and write it to the environment on install.
@@ -89,6 +123,23 @@ final class Config
             // Fixed-window rate limits.
             'RATE_IP_PER_MINUTE'     => '5',
             'RATE_FORM_PER_HOUR'     => '60',
+
+            // SMTP authentication (empty = no auth, as with Mailpit in dev).
+            'SMTP_USER'              => '',
+            'SMTP_PASS'              => '',
+            // Transport security: 'none' (Mailpit/dev), 'starttls' or 'smtps'.
+            'SMTP_ENCRYPTION'        => 'none',
+
+            // Envelope/header identity. From: is ALWAYS this address; the
+            // submitter never controls it.
+            'MAIL_FROM_ADDRESS'      => 'noreply@localhost',
+            'MAIL_FROM_NAME'         => 'OpenSendForm',
+
+            // Retry policy. A submission is attempted at most MAIL_MAX_ATTEMPTS
+            // times; the backoff list gives the wait (minutes) after each
+            // failure, the last value repeating if failures exceed the list.
+            'MAIL_MAX_ATTEMPTS'      => '5',
+            'MAIL_RETRY_BACKOFF_MINUTES' => '1,5,30,120',
         ];
     }
 
@@ -172,6 +223,65 @@ final class Config
     public function rateFormPerHour(): int
     {
         return (int) $this->get('RATE_FORM_PER_HOUR');
+    }
+
+    public function smtpUser(): string
+    {
+        return $this->get('SMTP_USER');
+    }
+
+    public function smtpPass(): string
+    {
+        return $this->get('SMTP_PASS');
+    }
+
+    /**
+     * SMTP transport security: one of 'none', 'starttls', 'smtps'.
+     * Anything unrecognised is treated as 'none'.
+     */
+    public function smtpEncryption(): string
+    {
+        $value = strtolower(trim($this->get('SMTP_ENCRYPTION')));
+
+        return in_array($value, ['none', 'starttls', 'smtps'], true) ? $value : 'none';
+    }
+
+    public function mailFromAddress(): string
+    {
+        return $this->get('MAIL_FROM_ADDRESS');
+    }
+
+    public function mailFromName(): string
+    {
+        return $this->get('MAIL_FROM_NAME');
+    }
+
+    public function mailMaxAttempts(): int
+    {
+        return max(1, (int) $this->get('MAIL_MAX_ATTEMPTS'));
+    }
+
+    /**
+     * Retry backoff schedule in minutes, parsed from the comma list. Only
+     * positive integers are kept; an empty or malformed list falls back to
+     * a single one-minute wait so retry can never schedule a zero/negative
+     * delay.
+     *
+     * @return array<int,int> One or more positive minute values.
+     */
+    public function mailRetryBackoffMinutes(): array
+    {
+        $parts = explode(',', $this->get('MAIL_RETRY_BACKOFF_MINUTES'));
+
+        $minutes = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part !== '' && ctype_digit($part) && (int) $part > 0) {
+                $minutes[] = (int) $part;
+            }
+        }
+
+        return $minutes === [] ? [1] : $minutes;
     }
 
     /**

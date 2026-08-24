@@ -62,6 +62,12 @@ final class SubmitContext
      */
     public ?string $matchedOrigin = null;
 
+    /**
+     * The id of the stored submission (set by the store stage). Read by the
+     * delivery stage to know which row to attempt sending.
+     */
+    public ?int $submissionId = null;
+
     public string $remoteIp = '';
     public ?string $userAgent = null;
     public ?string $originHeader = null;

@@ -6,9 +6,11 @@ namespace OpenSendForm\Submit;
 
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Mail\DeliveryService;
 use OpenSendForm\RateLimit\RateLimiter;
 use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Submission\SubmissionRepository;
+use OpenSendForm\Submit\Stages\DeliveryStage;
 use OpenSendForm\Submit\Stages\EmailValidationStage;
 use OpenSendForm\Submit\Stages\FieldHygieneStage;
 use OpenSendForm\Submit\Stages\FormLookupStage;
@@ -49,7 +51,8 @@ final class SubmitPipeline
         RateLimiter $limiter,
         SubmitToken $tokens,
         DnsChecker $dns,
-        SubmissionRepository $submissions
+        SubmissionRepository $submissions,
+        ?DeliveryService $delivery = null
     ): self {
         return new self([
             new MethodBodyStage($config),        // a. method + body size + parse
@@ -60,7 +63,8 @@ final class SubmitPipeline
             new HoneypotStage(),                 // f. honeypot -> silent success
             new TokenStage($tokens),             // g. submit-token
             new EmailValidationStage($dns),      // h. email syntax + MX/A
-            new StoreStage($submissions),        // i. persist -> success
+            new StoreStage($submissions),        // i. persist (non-terminal)
+            new DeliveryStage($delivery, $config), // j. mail relay -> success
         ]);
     }
 
@@ -73,7 +77,7 @@ final class SubmitPipeline
             }
         }
 
-        // Unreachable: StoreStage always returns an outcome.
+        // Unreachable: the terminal DeliveryStage always returns an outcome.
         return SubmitOutcome::error(500, 'internal_error', 'The pipeline produced no result.');
     }
 

@@ -202,3 +202,76 @@
 - Test results (local): **OK — 88 tests, 1226 assertions, all green.**
   CI itself will be exercised for real once this branch's PR is opened.
 - Deviations from prompt: none. QUESTIONS.md unchanged (no blockers).
+
+## 2026-08-24 — Increment 3: SMTP relay (PHPMailer) with retry
+- Branch: feature/increment-3-mail (off latest main).
+- Dependency: added phpmailer/phpmailer ^6 (v6.12.0) — the only authorised
+  new dependency, runtime.
+- Config: added SMTP_USER, SMTP_PASS, SMTP_ENCRYPTION (none|starttls|smtps,
+  default none for Mailpit), MAIL_FROM_ADDRESS (noreply@localhost),
+  MAIL_FROM_NAME (OpenSendForm), MAIL_MAX_ATTEMPTS (5),
+  MAIL_RETRY_BACKOFF_MINUTES (1,5,30,120) + typed accessors (encryption
+  normalised to a known value; backoff parsed to positive ints with a
+  [1]-minute fallback; max attempts floored at 1). Added
+  `Config::fromValues()` for explicit construction that honours an intentional
+  empty string (fromEnvironment still protects defaults from blank env);
+  refactored the shared dev-secret step into finalise().
+- Migration 005: submissions gains attempts (INTEGER NOT NULL DEFAULT 0),
+  last_attempt_at, next_attempt_at, last_error — one portable ADD COLUMN
+  statement each. MigrationRunnerTest/SchemaMigrationsTest version locks
+  bumped to [1,2,3,4,5] (as each migration-adding increment has done).
+- `src/Mail/MessageBuilder.php` (+ `BuiltMessage`): builds subject and
+  plain-text body from a form + fields and extracts Reply-To. Enforces the
+  mail policy — subject/name control chars (newlines included) collapsed;
+  Reply-To only a filter_var-valid `email` field (injection attempts fail and
+  yield none); body values normalised, control-stripped (tab/newline kept)
+  and truncated at a cap. Directly unit-tested with hostile inputs.
+- `src/Mail/MailerInterface.php` (throws on failure) + `PhpMailerMailer`
+  (isSMTP, host/port/timeout/encryption/auth from Config, exceptions on,
+  From = service identity, CharSet UTF-8, plain text). PHPMailer's address
+  validator set to `html5` so single-label hosts like `noreply@localhost`
+  (the dev default) are accepted; our own boundaries validate addresses more
+  strictly. `tests/Support/FakeMailer` records calls and is scriptable to
+  fail (always / first-N).
+- `src/Mail/DeliveryService.php`: attemptDelivery(id) loads submission+form,
+  builds + sends; success → `sent` (attempts+1, last_attempt_at); failure →
+  `failed` (attempts+1, truncated last_error, next_attempt_at from the
+  backoff list, last value repeating past the list length) escalating to
+  `dead` once attempts reach MAIL_MAX_ATTEMPTS. retryDue(now?) re-attempts
+  every due `failed` row (portable lexicographic timestamp compare) and
+  returns a summary. SubmissionRepository gained markSent/markFailed/markDead/
+  findDueForRetry/listSummaries.
+- Pipeline wiring: StoreStage is now non-terminal (returns null, stashing the
+  new submission id on the context); the new terminal `DeliveryStage` makes at
+  most one in-request send and ALWAYS returns success — the endpoint stays
+  `{"ok":true}` on send failure (asserted). Delivery is skipped (status left
+  `received`) when no mailer is wired, SMTP_HOST is empty, or nothing stored.
+  AppFactory::create() takes an optional MailerInterface and builds the
+  DeliveryService only when one is supplied; public/index.php wires a real
+  PhpMailerMailer only when SMTP_HOST is non-empty (storage-only otherwise).
+  SubmitPipelineOrderTest updated to expect the DeliveryStage terminal.
+- `bin/osf`: mail:retry (runs retryDue, prints a summary, always exit 0 —
+  cPanel cron), mail:test --to=ADDRESS (fixed message via configured SMTP,
+  exit 0/1), submissions:list [--status=X] (id, form_key, created, status,
+  attempts — never content).
+- Tests added (120 total, was 88): MessageBuilder hostile-input suite (14);
+  DeliveryService success/backoff/escalation/retry-due with a fake clock (7);
+  pipeline integration through the app factory — ok:true + `sent` with a
+  working transport, ok:true + `failed` with a failing transport, empty
+  SMTP_HOST and no-mailer both leaving `received` (4); Config mail defaults/
+  overrides/parsing/fromValues (7). Existing migration version-lock tests and
+  the pipeline order test updated as above; no other existing test touched.
+- Verification: full suite green (120 tests, 1343 assertions). Also smoke-
+  tested for real against the dev Mailpit — `mail:test` delivers, and a full
+  HTTP token→submit run produced status `sent` and an email in Mailpit
+  (From OpenSendForm, Reply-To the submitter, subject "New form submission:
+  Contact", body listing the fields).
+- Docs: README gained an end-to-end local test recipe (create form, enable
+  store_content, token flow, curl submit, see it in Mailpit) and the v1 API
+  mail note updated. CONTEXT.md overwritten; this entry appended.
+- Deviations from prompt: none functional. Two items logged to QUESTIONS.md:
+  (1) delivery reads stored `content`, so with store_content OFF (default) the
+  email lists no fields and retries carry none — an architecture decision for
+  the owner; (2) the storage-only guard keys off an empty SMTP_HOST, which the
+  env parser can't express, so it is implemented via fromValues()/the front
+  controller and a dedicated MAIL_ENABLED flag is suggested for later.
