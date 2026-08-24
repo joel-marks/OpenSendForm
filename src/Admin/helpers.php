@@ -16,3 +16,34 @@ if (!function_exists('OpenSendForm\\Admin\\h')) {
         return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }
+
+if (!function_exists('OpenSendForm\\Admin\\truncate')) {
+    /**
+     * Shorten a string to $length characters, appending an ellipsis when cut.
+     * Returns '' for null. The result is NOT escaped — pass it through h().
+     */
+    function truncate(string|null $value, int $length = 80): string
+    {
+        $value = (string) $value;
+        if (mb_strlen($value) <= $length) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $length) . '…';
+    }
+}
+
+if (!function_exists('OpenSendForm\\Admin\\statusBadgeClass')) {
+    /**
+     * Map a submission status to a badge modifier class.
+     */
+    function statusBadgeClass(string $status): string
+    {
+        return match ($status) {
+            'sent'     => 'osf-badge--ok',
+            'failed'   => 'osf-badge--warn',
+            'dead'     => 'osf-badge--danger',
+            default    => 'osf-badge--muted',
+        };
+    }
+}

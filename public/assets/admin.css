@@ -1,0 +1,236 @@
+/*
+ * OpenSendForm admin overrides.
+ *
+ * Layered on top of vendored Pico CSS v2 (pico.min.css). Defines our brand
+ * palette as CSS custom properties for BOTH the light and dark colour
+ * schemes, plus the handful of components Pico does not ship (status/active
+ * badges, the click-to-copy key, flash messages, segmented TOTP boxes and the
+ * QR container). Every foreground/background pair here is chosen to clear
+ * WCAG AA contrast in its scheme.
+ *
+ * Theme resolution: with no explicit choice the browser's prefers-color-scheme
+ * wins (Pico's default). A manual choice sets data-theme="light|dark" on
+ * <html> (see theme.js), which Pico and the rules below both honour.
+ */
+
+/* --- Brand palette ---------------------------------------------------- */
+
+/* Light scheme (default, and the auto default when the OS is light). */
+:root {
+    --osf-badge-radius: 0.35rem;
+
+    --osf-ok-bg: #d8f3e3;
+    --osf-ok-fg: #0f5132;
+    --osf-warn-bg: #fff0cc;
+    --osf-warn-fg: #664d03;
+    --osf-danger-bg: #fadbd8;
+    --osf-danger-fg: #842029;
+    --osf-muted-bg: #e5e7eb;
+    --osf-muted-fg: #374151;
+    --osf-info-bg: #d6e4ff;
+    --osf-info-fg: #1e3a8a;
+}
+
+/* Dark scheme via the OS preference (only when the user has not chosen). */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --osf-ok-bg: #123524;
+        --osf-ok-fg: #7ee2ab;
+        --osf-warn-bg: #3d3417;
+        --osf-warn-fg: #f5d67b;
+        --osf-danger-bg: #3d1a1d;
+        --osf-danger-fg: #f5a3a3;
+        --osf-muted-bg: #2a2f3a;
+        --osf-muted-fg: #cbd5e1;
+        --osf-info-bg: #17233d;
+        --osf-info-fg: #9dbcff;
+    }
+}
+
+/* Dark scheme via an explicit manual choice. */
+[data-theme="dark"] {
+    --osf-ok-bg: #123524;
+    --osf-ok-fg: #7ee2ab;
+    --osf-warn-bg: #3d3417;
+    --osf-warn-fg: #f5d67b;
+    --osf-danger-bg: #3d1a1d;
+    --osf-danger-fg: #f5a3a3;
+    --osf-muted-bg: #2a2f3a;
+    --osf-muted-fg: #cbd5e1;
+    --osf-info-bg: #17233d;
+    --osf-info-fg: #9dbcff;
+}
+
+/* --- Top navigation --------------------------------------------------- */
+
+.osf-nav {
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    margin-bottom: 1.5rem;
+}
+
+.osf-nav .osf-brand {
+    font-weight: 700;
+}
+
+.osf-nav .osf-admin-name {
+    color: var(--pico-muted-color);
+    font-size: 0.9rem;
+}
+
+/* Keep the logout form inline in the nav without Pico's block spacing. */
+.osf-nav form {
+    display: inline;
+    margin: 0;
+}
+
+.osf-nav form button {
+    width: auto;
+    margin: 0;
+    padding: 0.25rem 0.6rem;
+}
+
+/* Icon-only theme toggle. */
+.osf-theme-toggle {
+    width: auto;
+    margin: 0;
+    padding: 0.25rem 0.6rem;
+    background: transparent;
+    border-color: var(--pico-muted-border-color);
+    color: var(--pico-color);
+}
+
+/* --- Badges & status pills -------------------------------------------- */
+
+.osf-badge {
+    display: inline-block;
+    padding: 0.12rem 0.5rem;
+    border-radius: var(--osf-badge-radius);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.osf-badge--ok      { background: var(--osf-ok-bg);     color: var(--osf-ok-fg); }
+.osf-badge--warn    { background: var(--osf-warn-bg);   color: var(--osf-warn-fg); }
+.osf-badge--danger  { background: var(--osf-danger-bg); color: var(--osf-danger-fg); }
+.osf-badge--muted   { background: var(--osf-muted-bg);  color: var(--osf-muted-fg); }
+.osf-badge--info    { background: var(--osf-info-bg);   color: var(--osf-info-fg); }
+
+/* --- Click-to-copy key ------------------------------------------------ */
+
+.osf-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.osf-copy code {
+    font-size: 0.85rem;
+}
+
+.osf-copy button {
+    width: auto;
+    margin: 0;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.78rem;
+}
+
+/* --- Flash messages --------------------------------------------------- */
+
+.osf-flash {
+    padding: 0.75rem 1rem;
+    border-radius: var(--pico-border-radius);
+    margin-bottom: 1rem;
+}
+
+.osf-flash--success { background: var(--osf-ok-bg);     color: var(--osf-ok-fg); }
+.osf-flash--error   { background: var(--osf-danger-bg); color: var(--osf-danger-fg); }
+.osf-flash--info    { background: var(--osf-info-bg);   color: var(--osf-info-fg); }
+
+/* --- Tables ----------------------------------------------------------- */
+
+/* Wide tables scroll horizontally inside their own box on small screens. */
+.osf-table-wrap {
+    overflow-x: auto;
+}
+
+.osf-truncate {
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.osf-inline-form {
+    display: inline;
+    margin: 0;
+}
+
+.osf-inline-form button {
+    width: auto;
+    margin: 0;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+/* A link disabled by a JS gate (e.g. the recovery-codes acknowledgement). */
+.osf-disabled-link {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* --- Segmented TOTP code inputs (progressive enhancement) ------------- */
+
+.osf-code-boxes {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.osf-code-boxes input {
+    width: 3rem;
+    text-align: center;
+    font-size: 1.4rem;
+    padding: 0.5rem 0;
+    margin: 0;
+}
+
+/* --- QR code ---------------------------------------------------------- */
+
+.osf-qr {
+    display: inline-block;
+    padding: 0.75rem;
+    background: #ffffff;   /* QR needs a light quiet zone in any theme. */
+    border-radius: var(--pico-border-radius);
+    line-height: 0;
+}
+
+.osf-qr svg {
+    width: 200px;
+    height: 200px;
+}
+
+/* --- Dashboard stat cards --------------------------------------------- */
+
+.osf-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.osf-stat {
+    margin: 0;
+}
+
+.osf-stat .osf-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.osf-stat .osf-stat-label {
+    color: var(--pico-muted-color);
+    font-size: 0.85rem;
+}

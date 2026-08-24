@@ -6,6 +6,7 @@ namespace OpenSendForm;
 
 use DI\Container;
 use OpenSendForm\Admin\AdminRoutes;
+use OpenSendForm\Admin\Flash;
 use OpenSendForm\Admin\TemplateRenderer;
 use OpenSendForm\Auth\AdminRepository;
 use OpenSendForm\Auth\AuthService;
@@ -160,6 +161,7 @@ final class AppFactory
         $container->set(RecoveryCodes::class, $recovery);
         $container->set(AdminRepository::class, $adminRepo);
         $container->set(Csrf::class, new Csrf($session));
+        $container->set(Flash::class, new Flash($session));
         $container->set(
             AuthService::class,
             new AuthService($adminRepo, $hasher, $totp, $session, $limiter, $clock)
