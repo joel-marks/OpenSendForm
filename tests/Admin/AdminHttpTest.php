@@ -148,6 +148,61 @@ final class AdminHttpTest extends TestCase
         self::assertSame(200, $this->get('/admin')->getStatusCode());
     }
 
+    public function testTotpRateLimitedReturns429(): void
+    {
+        $admin = $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
+        $secret = $this->totp->generateSecret();
+        $this->admins->setTotp($admin['id'], $secret);
+        $this->admins->enableTotp($admin['id']);
+
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => 'boss@example.com',
+            'password' => self::PASSWORD,
+        ]);
+
+        // Default cap is 5 wrong attempts per admin per 900s window.
+        for ($i = 0; $i < 5; $i++) {
+            $totpPage = $this->get('/admin/totp');
+            $response = $this->post('/admin/totp', [
+                '_csrf' => $this->csrfFrom($totpPage),
+                'code'  => '000000',
+            ]);
+            self::assertSame(401, $response->getStatusCode(), "attempt {$i}");
+        }
+
+        $totpPage = $this->get('/admin/totp');
+        $response = $this->post('/admin/totp', [
+            '_csrf' => $this->csrfFrom($totpPage),
+            'code'  => '000000',
+        ]);
+        self::assertSame(429, $response->getStatusCode());
+        self::assertStringContainsString('Too many attempts. Please try again later.', (string) $response->getBody());
+    }
+
+    public function testExpiredPendingTotpRedirectsToLogin(): void
+    {
+        $admin = $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
+        $secret = $this->totp->generateSecret();
+        $this->admins->setTotp($admin['id'], $secret);
+        $this->admins->enableTotp($admin['id']);
+
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => 'boss@example.com',
+            'password' => self::PASSWORD,
+        ]);
+        self::assertSame(200, $this->get('/admin/totp')->getStatusCode());
+
+        $this->clock->advance(300 + 1);
+
+        $response = $this->get('/admin/totp');
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/admin/login', $response->getHeaderLine('Location'));
+    }
+
     public function testLogoutDestroysSession(): void
     {
         $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
@@ -166,6 +221,24 @@ final class AdminHttpTest extends TestCase
 
         // Protected route bounces again after logout.
         self::assertSame(302, $this->get('/admin')->getStatusCode());
+    }
+
+    // --- XSS ----------------------------------------------------------------
+
+    public function testLoginEscapesSubmittedEmailInErrorResponse(): void
+    {
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $payload = '"/><script>alert(1)</script>';
+
+        $response = $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => $payload,
+            'password' => 'wrong-password',
+        ]);
+
+        $body = (string) $response->getBody();
+        self::assertStringNotContainsString('<script>alert(1)</script>', $body);
+        self::assertStringContainsString(htmlspecialchars($payload, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), $body);
     }
 
     // --- CSRF -------------------------------------------------------------

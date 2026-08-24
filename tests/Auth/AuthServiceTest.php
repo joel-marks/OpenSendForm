@@ -10,6 +10,7 @@ use OpenSendForm\Auth\LoginOutcome;
 use OpenSendForm\Auth\PasswordHasher;
 use OpenSendForm\Auth\RecoveryCodes;
 use OpenSendForm\Auth\Totp;
+use OpenSendForm\Auth\TotpOutcome;
 use OpenSendForm\RateLimit\RateLimiter;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
@@ -49,8 +50,13 @@ final class AuthServiceTest extends TestCase
         $this->limiter = new RateLimiter($this->db, $this->clock);
     }
 
-    private function service(int $maxPerIp = 10, int $maxPerEmail = 5): AuthService
-    {
+    private function service(
+        int $maxPerIp = 10,
+        int $maxPerEmail = 5,
+        int $maxTotpPerAdmin = 5,
+        int $maxTotpPerIp = 10,
+        int $rateWindowSeconds = 900
+    ): AuthService {
         return new AuthService(
             $this->admins,
             $this->hasher,
@@ -59,7 +65,13 @@ final class AuthServiceTest extends TestCase
             $this->limiter,
             $this->clock,
             $maxPerIp,
-            $maxPerEmail
+            $maxPerEmail,
+            $rateWindowSeconds,
+            1800,
+            43200,
+            null,
+            $maxTotpPerAdmin,
+            $maxTotpPerIp
         );
     }
 
@@ -164,7 +176,7 @@ final class AuthServiceTest extends TestCase
         $secret = $this->admins->findById($admin['id'])['totp_secret'];
         $code = $this->totp->codeAt($secret, self::T0);
 
-        self::assertTrue($service->verifyTotp($code));
+        self::assertSame(TotpOutcome::Success, $service->verifyTotp($code, self::IP));
         self::assertSame($admin['id'], $this->session->get(AuthService::SESSION_ADMIN_ID));
         self::assertNull($this->session->get(AuthService::SESSION_PENDING_TOTP));
     }
@@ -175,7 +187,7 @@ final class AuthServiceTest extends TestCase
         $service = $this->service();
         $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
 
-        self::assertFalse($service->verifyTotp('000000'));
+        self::assertSame(TotpOutcome::Invalid, $service->verifyTotp('000000', self::IP));
         self::assertFalse($this->session->has(AuthService::SESSION_ADMIN_ID));
     }
 
@@ -188,19 +200,110 @@ final class AuthServiceTest extends TestCase
 
         $service = $this->service();
         $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
-        self::assertTrue($service->verifyTotp($batch['plain'][0]));
+        self::assertSame(TotpOutcome::Success, $service->verifyTotp($batch['plain'][0], self::IP));
 
         // The same recovery code cannot be reused on a subsequent login.
         $service->logout();
         $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
-        self::assertFalse($service->verifyTotp($batch['plain'][0]));
+        self::assertSame(TotpOutcome::Invalid, $service->verifyTotp($batch['plain'][0], self::IP));
     }
 
     public function testVerifyTotpFailsWithoutPendingStep(): void
     {
         $this->makeAdmin(true);
 
-        self::assertFalse($this->service()->verifyTotp('123456'));
+        self::assertSame(TotpOutcome::Invalid, $this->service()->verifyTotp('123456', self::IP));
+    }
+
+    // --- TOTP rate limiting -------------------------------------------------
+
+    public function testVerifyTotpRateLimitedAfterTooManyAttemptsPerAdmin(): void
+    {
+        $this->makeAdmin(true);
+        $service = $this->service(10, 5, 3, 10); // 3 attempts per admin window
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        for ($i = 0; $i < 3; $i++) {
+            self::assertSame(TotpOutcome::Invalid, $service->verifyTotp('000000', self::IP));
+        }
+
+        self::assertSame(TotpOutcome::RateLimited, $service->verifyTotp('000000', self::IP));
+    }
+
+    public function testVerifyTotpRateLimitedAfterTooManyAttemptsPerIp(): void
+    {
+        $this->makeAdmin(true);
+        $service = $this->service(10, 5, 100, 2); // 2 attempts per IP window
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        for ($i = 0; $i < 2; $i++) {
+            self::assertSame(TotpOutcome::Invalid, $service->verifyTotp('000000', self::IP));
+        }
+
+        self::assertSame(TotpOutcome::RateLimited, $service->verifyTotp('000000', self::IP));
+    }
+
+    public function testVerifyTotpRateLimitResetsAfterWindowRollover(): void
+    {
+        // A 60s rate-limit window (well inside the 300s pending-TOTP TTL) so
+        // the rollover under test isn't confounded by the pending step
+        // expiring.
+        $admin = $this->makeAdmin(true);
+        $service = $this->service(10, 5, 2, 10, 60); // 2 attempts per admin window
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        self::assertSame(TotpOutcome::Invalid, $service->verifyTotp('000000', self::IP));
+        self::assertSame(TotpOutcome::Invalid, $service->verifyTotp('000000', self::IP));
+        self::assertSame(TotpOutcome::RateLimited, $service->verifyTotp('000000', self::IP));
+
+        // Cross into the next 60s rate-limit window: the admin bucket resets,
+        // and the pending TOTP step is still fresh (well under 300s).
+        $this->clock->advance(60);
+
+        $secret = $this->admins->findById($admin['id'])['totp_secret'];
+        $code = $this->totp->codeAt($secret, $this->clock->now());
+        self::assertSame(TotpOutcome::Success, $service->verifyTotp($code, self::IP));
+    }
+
+    // --- Pending TOTP expiry ------------------------------------------------
+
+    public function testPendingTotpExpiresAfter300Seconds(): void
+    {
+        $admin = $this->makeAdmin(true);
+        $service = $this->service();
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        self::assertSame($admin['id'], $service->pendingTotpAdminId());
+
+        $this->clock->advance(300 + 1);
+
+        self::assertNull($service->pendingTotpAdminId());
+        self::assertFalse($this->session->has(AuthService::SESSION_PENDING_TOTP));
+    }
+
+    public function testVerifyTotpTreatsExpiredPendingAsNoPendingLogin(): void
+    {
+        $admin = $this->makeAdmin(true);
+        $service = $this->service();
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        $secret = $this->admins->findById($admin['id'])['totp_secret'];
+        $this->clock->advance(300 + 1);
+        $code = $this->totp->codeAt($secret, $this->clock->now());
+
+        self::assertSame(TotpOutcome::Invalid, $service->verifyTotp($code, self::IP));
+        self::assertFalse($this->session->has(AuthService::SESSION_ADMIN_ID));
+    }
+
+    public function testPendingTotpStaysAliveJustUnder300Seconds(): void
+    {
+        $admin = $this->makeAdmin(true);
+        $service = $this->service();
+        $service->attemptLogin('boss@example.com', self::PASSWORD, self::IP);
+
+        $this->clock->advance(300);
+
+        self::assertSame($admin['id'], $service->pendingTotpAdminId());
     }
 
     // --- Session lifetime -------------------------------------------------

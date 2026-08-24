@@ -26,8 +26,12 @@ final class AuthService
     /** Session keys owned by the auth stack. */
     public const SESSION_ADMIN_ID = 'auth.admin_id';
     public const SESSION_PENDING_TOTP = 'auth.pending_totp_admin_id';
+    public const SESSION_PENDING_TOTP_AT = 'auth.pending_totp_at';
     public const SESSION_LOGIN_AT = 'auth.login_at';
     public const SESSION_LAST_SEEN = 'auth.last_seen';
+
+    /** How long a password-verified-but-not-yet-2FA'd login stays parked. */
+    private const PENDING_TOTP_TTL_SECONDS = 300;
 
     /** Verified against for unknown emails, purely to equalise timing. */
     private const DUMMY_PASSWORD = 'osf-timing-equalisation-dummy';
@@ -44,6 +48,8 @@ final class AuthService
     private int $rateWindowSeconds;
     private int $idleTimeoutSeconds;
     private int $absoluteTimeoutSeconds;
+    private int $maxTotpPerAdmin;
+    private int $maxTotpPerIp;
 
     private ?string $dummyHash;
 
@@ -59,7 +65,9 @@ final class AuthService
         int $rateWindowSeconds = 900,
         int $idleTimeoutSeconds = 1800,
         int $absoluteTimeoutSeconds = 43200,
-        ?string $dummyHash = null
+        ?string $dummyHash = null,
+        int $maxTotpPerAdmin = 5,
+        int $maxTotpPerIp = 10
     ) {
         $this->admins = $admins;
         $this->hasher = $hasher;
@@ -73,6 +81,8 @@ final class AuthService
         $this->idleTimeoutSeconds = $idleTimeoutSeconds;
         $this->absoluteTimeoutSeconds = $absoluteTimeoutSeconds;
         $this->dummyHash = $dummyHash;
+        $this->maxTotpPerAdmin = $maxTotpPerAdmin;
+        $this->maxTotpPerIp = $maxTotpPerIp;
     }
 
     /**
@@ -119,6 +129,7 @@ final class AuthService
             // TOTP step and clear any prior full-login marker.
             $this->session->remove(self::SESSION_ADMIN_ID);
             $this->session->set(self::SESSION_PENDING_TOTP, $admin['id']);
+            $this->session->set(self::SESSION_PENDING_TOTP_AT, $this->clock->now());
 
             return LoginOutcome::NeedsTotp;
         }
@@ -129,46 +140,70 @@ final class AuthService
     }
 
     /**
-     * The admin id awaiting TOTP entry, or null.
+     * The admin id awaiting TOTP entry, or null. A pending login older than
+     * PENDING_TOTP_TTL_SECONDS is treated as expired: it is cleared here and
+     * null is returned, so a stale password-verified session cannot be used
+     * to complete a TOTP challenge indefinitely.
      */
     public function pendingTotpAdminId(): ?int
     {
         $id = $this->session->get(self::SESSION_PENDING_TOTP);
+        if (!is_int($id) || $id <= 0) {
+            return null;
+        }
 
-        return is_int($id) && $id > 0 ? $id : null;
+        $parkedAt = $this->session->get(self::SESSION_PENDING_TOTP_AT);
+        if (!is_int($parkedAt) || $this->clock->now() - $parkedAt > self::PENDING_TOTP_TTL_SECONDS) {
+            $this->session->remove(self::SESSION_PENDING_TOTP);
+            $this->session->remove(self::SESSION_PENDING_TOTP_AT);
+
+            return null;
+        }
+
+        return $id;
     }
 
     /**
      * Verify the second factor for the pending admin: a current TOTP code or,
      * failing that, a single-use recovery code. On success the login is
      * completed (session regenerated, pending marker cleared).
+     *
+     * Rate-limited per-admin AND per-IP before any verification work, so a
+     * brute force against one account from many IPs and a burst from one IP
+     * across a guessed sequence of codes are each caught.
      */
-    public function verifyTotp(string $code): bool
+    public function verifyTotp(string $code, string $ip): TotpOutcome
     {
         $id = $this->pendingTotpAdminId();
         if ($id === null) {
-            return false;
+            return TotpOutcome::Invalid;
+        }
+
+        $adminAllowed = $this->limiter->hit('admintotp:admin:' . $id, $this->maxTotpPerAdmin, $this->rateWindowSeconds);
+        $ipAllowed = $this->limiter->hit('admintotp:ip:' . $ip, $this->maxTotpPerIp, $this->rateWindowSeconds);
+        if (!$adminAllowed || !$ipAllowed) {
+            return TotpOutcome::RateLimited;
         }
 
         $admin = $this->admins->findById($id);
         if ($admin === null || (int) $admin['totp_enabled'] !== 1 || $admin['totp_secret'] === null) {
-            return false;
+            return TotpOutcome::Invalid;
         }
 
         if ($this->totp->verify($admin['totp_secret'], $code, $this->clock->now())) {
             $this->completeLogin($id);
 
-            return true;
+            return TotpOutcome::Success;
         }
 
         // Recovery-code fallback (single-use, consumed on match).
         if ($this->admins->consumeRecoveryCode($id, $code)) {
             $this->completeLogin($id);
 
-            return true;
+            return TotpOutcome::Success;
         }
 
-        return false;
+        return TotpOutcome::Invalid;
     }
 
     /**
@@ -226,6 +261,7 @@ final class AuthService
     {
         $this->session->regenerate();
         $this->session->remove(self::SESSION_PENDING_TOTP);
+        $this->session->remove(self::SESSION_PENDING_TOTP_AT);
 
         $now = $this->clock->now();
         $this->session->set(self::SESSION_ADMIN_ID, $adminId);
