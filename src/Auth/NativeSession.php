@@ -93,6 +93,10 @@ final class NativeSession implements SessionInterface
             'secure'   => self::isHttps(),
         ]);
 
+        // Refuse attacker-supplied session ids: without strict mode PHP will
+        // happily adopt whatever id arrives in the cookie, enabling session
+        // fixation.
+        ini_set('session.use_strict_mode', '1');
         session_start();
         $this->started = true;
     }
