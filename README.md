@@ -1,5 +1,7 @@
 # OpenSendForm
 
+[![CI](https://github.com/joel-marks/OpenSendForm/actions/workflows/ci.yml/badge.svg)](https://github.com/joel-marks/OpenSendForm/actions/workflows/ci.yml)
+
 **Status: pre-alpha. Nothing here is usable yet. Do not install.**
 
 OpenSendForm will be a free, open-source, self-hostable form-to-email
