@@ -50,21 +50,21 @@ final class Routes
             }
         );
 
-        // /v1/submit is mapped for the common methods so a non-POST reaches
-        // our handler and returns the contract's method_not_allowed body
-        // (rather than Slim's default 405). OPTIONS is handled separately as
-        // a CORS preflight.
+        // /v1/form/{form_key}/submit is mapped for the common methods so a
+        // non-POST reaches our handler and returns the contract's
+        // method_not_allowed body (rather than Slim's default 405). OPTIONS
+        // is handled separately as a CORS preflight.
         $app->map(
             ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-            '/v1/submit',
-            function (ServerRequestInterface $req, ResponseInterface $res) use ($container): ResponseInterface {
-                return Routes::submit($container, $req, $res);
+            '/v1/form/{form_key}/submit',
+            function (ServerRequestInterface $req, ResponseInterface $res, array $args) use ($container): ResponseInterface {
+                return Routes::submit($container, $req, $res, $args);
             }
         );
         $app->options(
-            '/v1/submit',
-            function (ServerRequestInterface $req, ResponseInterface $res) use ($container): ResponseInterface {
-                return Routes::preflightSubmit($container, $req, $res);
+            '/v1/form/{form_key}/submit',
+            function (ServerRequestInterface $req, ResponseInterface $res, array $args) use ($container): ResponseInterface {
+                return Routes::preflightSubmit($container, $req, $res, $args);
             }
         );
     }
@@ -154,42 +154,52 @@ final class Routes
     }
 
     /**
-     * OPTIONS /v1/submit — CORS preflight for the submission endpoint
-     * (POST). The target form is unknown at preflight time (its key is in
-     * the body), so the origin is accepted if any active form allows it.
+     * OPTIONS /v1/form/{form_key}/submit — CORS preflight for the
+     * submission endpoint (POST). The form key is in the URL, so the
+     * preflight resolves the specific form and echoes the origin only if
+     * that form's allowlist matches. Unknown/inactive key or a non-allowed
+     * origin: no ACAO header.
+     *
+     * @param array<string, string> $args
      */
     private static function preflightSubmit(
         ContainerInterface $container,
         ServerRequestInterface $request,
-        ResponseInterface $response
+        ResponseInterface $response,
+        array $args
     ): ResponseInterface {
         /** @var FormRepository $forms */
         $forms = $container->get(FormRepository::class);
 
         $allowed = null;
-        $origin = OriginMatcher::resolve(
-            self::header($request, 'Origin'),
-            self::header($request, 'Referer')
-        );
-        if ($origin !== null && $forms->isOriginAllowedByAnyActiveForm($origin)) {
-            $allowed = $origin;
+        $form = $forms->findByKey($args['form_key'] ?? '');
+        if ($form !== null) {
+            $allowed = OriginMatcher::match(
+                self::header($request, 'Origin'),
+                self::header($request, 'Referer'),
+                $form['allowed_origins']
+            );
         }
 
         return self::preflight($response, 'POST', $allowed);
     }
 
     /**
-     * POST /v1/submit — run the submission pipeline and render its outcome.
+     * POST /v1/form/{form_key}/submit — run the submission pipeline and
+     * render its outcome.
+     *
+     * @param array<string, string> $args
      */
     private static function submit(
         ContainerInterface $container,
         ServerRequestInterface $request,
-        ResponseInterface $response
+        ResponseInterface $response,
+        array $args
     ): ResponseInterface {
         /** @var SubmitPipeline $pipeline */
         $pipeline = $container->get(SubmitPipeline::class);
 
-        $context = new SubmitContext($request);
+        $context = new SubmitContext($request, $args['form_key'] ?? null);
         $outcome = $pipeline->run($context);
 
         $result = $outcome->isSuccess()

@@ -124,29 +124,6 @@ final class FormRepository
     }
 
     /**
-     * Whether a normalised origin is allowlisted by any active form.
-     *
-     * Used by the /v1/submit CORS preflight, which cannot know the target
-     * form (its key travels in the body, not the preflight). The actual
-     * per-form authorisation still happens on the POST itself.
-     */
-    public function isOriginAllowedByAnyActiveForm(string $normalisedOrigin): bool
-    {
-        $rows = $this->db->fetchAll(
-            'SELECT allowed_origins FROM forms WHERE is_active = 1'
-        );
-
-        foreach ($rows as $row) {
-            $origins = json_decode((string) $row['allowed_origins'], true);
-            if (is_array($origins) && in_array($normalisedOrigin, $origins, true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Enable or disable a form.
      *
      * @return bool True if a row was updated.

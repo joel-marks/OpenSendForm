@@ -64,11 +64,11 @@ Failures: `unknown_form` (unknown/inactive key), `origin_not_allowed`.
 The embed JS calls this before rendering a form and refreshes it on
 `token_expired`.
 
-### `POST /v1/submit`
+### `POST /v1/form/{form_key}/submit`
 Accepts `application/x-www-form-urlencoded`, `multipart/form-data` or
-`application/json`. Reserved fields:
+`application/json`. The form key travels in the URL, not the body, so
+CORS preflights can be resolved exactly per form. Reserved body fields:
 
-- `_osf_key` — the public form key (required)
 - `_osf_token` — the token from the endpoint above
 - `_osf_hp` — honeypot; must be left empty
 

@@ -148,3 +148,40 @@
 - Deviations from prompt: none functional; no new Composer deps.
   Clarification logged to QUESTIONS.md re: the /v1/submit CORS *preflight*,
   where the form key is not yet known — see that file.
+
+## 2026-08-24 — Fix: move form key into the submit URL (resolves QUESTIONS.md item)
+- Branch: fix/submit-route-form-key (off latest main).
+- Architect's decision on the open preflight question: the any-active-form
+  match was rejected as an origin-enumeration risk (a bad actor could probe
+  which origins are registered anywhere in the installation). Instead the
+  form key moved out of the body and into the URL so every check —
+  including the preflight — resolves one specific form.
+- `POST /v1/submit` → `POST /v1/form/{form_key}/submit`. `_osf_key` removed
+  as a reserved body field; reserved fields are now just `_osf_token` and
+  `_osf_hp`. `SubmitContext` takes the form key from the constructor
+  (populated from the route, not from parsed body fields); FieldHygieneStage
+  no longer reads or sets it. FormLookupStage is otherwise unchanged — it
+  still consumes `$context->formKey`, only the source changed.
+- `OPTIONS /v1/form/{form_key}/submit` now resolves the specific form by key
+  (mirroring the existing token preflight) and echoes
+  `Access-Control-Allow-Origin` only if that form's allowlist matches the
+  request's Origin/Referer. Unknown/inactive key or a disallowed origin: no
+  ACAO header, same as before. `FormRepository::isOriginAllowedByAnyActiveForm()`
+  and its call site were deleted outright — no remaining callers.
+  All other routes are still mapped for non-POST verbs so a wrong method on
+  the new path still returns the contract's 405 method_not_allowed.
+- Pipeline order, stage classes, and all behaviour (silent bot failures,
+  honest expired-token error, status codes) are unchanged; only where the
+  form key comes from moved.
+- Tests: `tests/Submit/SubmitEndpointTest.php` updated to hit
+  `/v1/form/{form_key}/submit` and drop `_osf_key` from submitted fields;
+  added two tests for the new preflight semantics — unknown form key
+  withholds ACAO, and a second form's allowed origin is not echoed for the
+  first form's preflight (proves no cross-form enumeration). No other test
+  files needed changes (`isOriginAllowedByAnyActiveForm` had no direct
+  test coverage).
+- Test results: **OK — 88 tests, 1226 assertions, all green.**
+- Docs: README v1 API section updated to the new URL and reserved-field
+  list. QUESTIONS.md item resolved (decision recorded above); CONTEXT.md
+  updated.
+- Deviations from prompt: none; no new Composer deps.

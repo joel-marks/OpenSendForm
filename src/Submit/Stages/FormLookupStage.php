@@ -10,7 +10,7 @@ use OpenSendForm\Submit\SubmitContext;
 use OpenSendForm\Submit\SubmitOutcome;
 
 /**
- * Stage (c): form lookup by _osf_key.
+ * Stage (c): form lookup by the URL's form_key.
  *
  * A missing, unknown or inactive key is a single, deliberately
  * indistinguishable failure: unknown_form. (findByKey returns active

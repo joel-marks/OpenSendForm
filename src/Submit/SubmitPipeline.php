@@ -54,7 +54,7 @@ final class SubmitPipeline
         return new self([
             new MethodBodyStage($config),        // a. method + body size + parse
             new FieldHygieneStage($config),      // b. field count/size + reserved split
-            new FormLookupStage($forms),         // c. _osf_key -> active form
+            new FormLookupStage($forms),         // c. URL form_key -> active form
             new OriginStage(),                   // d. origin allowlist + CORS
             new RateLimitStage($limiter, $config), // e. per-IP then per-form
             new HoneypotStage(),                 // f. honeypot -> silent success

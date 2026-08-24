@@ -58,7 +58,6 @@ final class FieldHygieneStage implements Stage
         }
 
         $context->fields = $strings;
-        $context->formKey = $strings[SubmitContext::FIELD_KEY] ?? null;
         $context->token = $strings[SubmitContext::FIELD_TOKEN] ?? null;
         $context->honeypot = $strings[SubmitContext::FIELD_HONEYPOT] ?? null;
 
