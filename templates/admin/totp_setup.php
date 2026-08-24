@@ -32,14 +32,25 @@
         manually. Then confirm with the 6-digit code the app shows.
     </p>
 
-    <p>Provisioning URI (encode as a QR code):</p>
+    <?php /* JS renders an SVG QR from data-qr client-side; the secret never
+             leaves the page. With JS off, the otpauth URI below is the fallback. */ ?>
+    <div class="osf-qr" data-qr="<?= h($otpauthUri) ?>">
+        <noscript><small>Enable JavaScript to see a QR code, or use the key below.</small></noscript>
+    </div>
+
+    <p><small>Provisioning URI (if you cannot scan the QR):</small></p>
     <p><code><?= h($otpauthUri) ?></code></p>
 
     <p>Manual entry key:</p>
-    <p><code><?= h($manualKey) ?></code></p>
+    <p>
+        <span class="osf-copy">
+            <code><?= h($manualKey) ?></code>
+            <button type="button" class="secondary outline" data-copy="<?= h($manualKey) ?>">Copy</button>
+        </span>
+    </p>
 
     <?php if (($error ?? '') !== ''): ?>
-        <p role="alert"><strong><?= h($error) ?></strong></p>
+        <p class="osf-flash osf-flash--error" role="alert"><strong><?= h($error) ?></strong></p>
     <?php endif; ?>
 
     <form method="post" action="/admin/totp/setup">
@@ -47,7 +58,8 @@
         <p>
             <label for="code">Authentication code</label><br>
             <input type="text" id="code" name="code" inputmode="numeric"
-                   autocomplete="one-time-code" autofocus required>
+                   autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
+                   autofocus required data-totp-code>
         </p>
         <p>
             <button type="submit">Enable two-factor authentication</button>

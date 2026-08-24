@@ -12,7 +12,8 @@
     <p>
         <label for="code">Authentication code</label><br>
         <input type="text" id="code" name="code" inputmode="numeric"
-               autocomplete="one-time-code" autofocus required>
+               autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
+               autofocus required data-totp-code>
     </p>
     <p>
         <button type="submit">Verify</button>
