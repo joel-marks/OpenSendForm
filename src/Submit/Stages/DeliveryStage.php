@@ -21,7 +21,9 @@ use OpenSendForm\Submit\SubmitOutcome;
  *
  * Delivery is skipped entirely, leaving the submission at 'received', when:
  *  - no mailer is configured (no DeliveryService wired), or
- *  - SMTP_HOST is empty/unconfigured (storage-only operation), or
+ *  - MAIL_ENABLED is falsy, or SMTP_HOST is empty/unconfigured (storage-only
+ *    operation) — MAIL_ENABLED is the primary switch, the host check a
+ *    secondary guard, or
  *  - no submission was stored (an earlier stage short-circuited).
  */
 final class DeliveryStage implements Stage
@@ -54,6 +56,7 @@ final class DeliveryStage implements Stage
     {
         return $this->delivery !== null
             && $context->submissionId !== null
+            && $this->config->mailEnabled()
             && trim($this->config->smtpHost()) !== '';
     }
 }
