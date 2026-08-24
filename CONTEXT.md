@@ -1,13 +1,23 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (fix/submit-route-form-key, Claude Code)
+Last updated: 2026-08-24 (chore/ci-workflow, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end (storage only; no mail
 yet). On top of the Increment 1 data model there is a versioned v1 API: a
 token endpoint, CORS preflights, and `POST /v1/form/{form_key}/submit`
 driven by an ordered validation/abuse pipeline. Submissions that pass are
-stored at status `received`. Test suite green (88 tests).
+stored at status `received`. Test suite green (88 tests). CI now runs
+that suite automatically on every PR and on push to main.
+
+## CI
+`.github/workflows/ci.yml` — job `tests` on ubuntu-latest, matrix PHP 8.1
++ 8.2 (fail-fast off, so a break on either floor or newer runtime is
+visible independently). Triggers: pull_request, push to main. Steps:
+checkout, `shivammathur/setup-php@v2` (pdo_sqlite, coverage off,
+XDEBUG_MODE=off), Composer cache keyed on `composer.lock`, `composer
+install --no-interaction --prefer-dist`, `composer test`. README badge
+added under the title, linking to the workflow's Actions page.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
