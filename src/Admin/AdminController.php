@@ -198,7 +198,9 @@ final class AdminController
     // --- Dashboard --------------------------------------------------------
 
     /**
-     * GET /admin — placeholder dashboard (name + logout).
+     * GET /admin — dashboard: at-a-glance counts plus the most recent
+     * failed/dead submissions (metadata only), each linking through to the
+     * filtered submissions view.
      */
     public static function dashboard(
         ContainerInterface $c,
@@ -211,12 +213,22 @@ final class AdminController
             return self::redirect($response, '/admin/login');
         }
 
-        return self::render($c, $response, 'dashboard', [
-            'title'       => 'Dashboard',
-            'csrf'        => self::csrf($c)->token(),
-            'displayName' => $admin['display_name'],
-            'totpEnabled' => (int) $admin['totp_enabled'] === 1,
-        ]);
+        /** @var \OpenSendForm\Form\FormRepository $forms */
+        $forms = $c->get(\OpenSendForm\Form\FormRepository::class);
+        /** @var \OpenSendForm\Submission\SubmissionRepository $submissions */
+        $submissions = $c->get(\OpenSendForm\Submission\SubmissionRepository::class);
+
+        $todayStart = gmdate('Y-m-d', self::clockNow($c)) . ' 00:00:00';
+
+        return AdminView::renderPage($c, $response, 'dashboard', [
+            'title'        => 'Dashboard',
+            'totpEnabled'  => (int) $admin['totp_enabled'] === 1,
+            'activeForms'  => $forms->countActive(),
+            'todayCount'   => $submissions->countSince($todayStart),
+            'failedCount'  => $submissions->countByStatus('failed'),
+            'deadCount'    => $submissions->countByStatus('dead'),
+            'recent'       => $submissions->recentByStatuses(['failed', 'dead'], 10),
+        ], 'dashboard');
     }
 
     // --- TOTP enrolment ---------------------------------------------------
@@ -236,9 +248,8 @@ final class AdminController
         }
 
         if ((int) $admin['totp_enabled'] === 1) {
-            return self::render($c, $response, 'totp_setup', [
+            return self::renderTotpSetup($c, $response, [
                 'title'   => 'Two-factor authentication',
-                'csrf'    => self::csrf($c)->token(),
                 'enabled' => true,
                 'error'   => '',
             ]);
@@ -246,7 +257,7 @@ final class AdminController
 
         $secret = self::currentOrNewSetupSecret($c);
 
-        return self::render($c, $response, 'totp_setup', self::enrolmentVars($c, $admin, $secret));
+        return self::renderTotpSetup($c, $response, self::enrolmentVars($c, $admin, $secret));
     }
 
     /**
@@ -274,7 +285,7 @@ final class AdminController
         }
 
         if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
-            return self::render($c, $response, 'totp_setup', self::enrolmentVars(
+            return self::renderTotpSetup($c, $response, self::enrolmentVars(
                 $c,
                 $admin,
                 $secret,
@@ -284,7 +295,7 @@ final class AdminController
 
         $totp = self::totpService($c);
         if (!$totp->verify($secret, (string) ($data['code'] ?? ''), self::clockNow($c))) {
-            return self::render($c, $response, 'totp_setup', self::enrolmentVars(
+            return self::renderTotpSetup($c, $response, self::enrolmentVars(
                 $c,
                 $admin,
                 $secret,
@@ -320,9 +331,8 @@ final class AdminController
         $data = self::formData($request);
 
         if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
-            return self::render($c, $response, 'totp_setup', [
+            return self::renderTotpSetup($c, $response, [
                 'title'   => 'Two-factor authentication',
-                'csrf'    => self::csrf($c)->token(),
                 'enabled' => true,
                 'error'   => 'Your session expired. Please try again.',
             ], 400);
@@ -330,9 +340,8 @@ final class AdminController
 
         $totp = self::totpService($c);
         if (!$totp->verify($admin['totp_secret'], (string) ($data['code'] ?? ''), self::clockNow($c))) {
-            return self::render($c, $response, 'totp_setup', [
+            return self::renderTotpSetup($c, $response, [
                 'title'   => 'Two-factor authentication',
-                'csrf'    => self::csrf($c)->token(),
                 'enabled' => true,
                 'error'   => 'That code did not match. Try again.',
             ], 401);
@@ -356,10 +365,10 @@ final class AdminController
         $batch = $recovery->generate();
         self::admins($c)->setRecoveryCodes($adminId, $batch['hashes']);
 
-        return self::render($c, $response, 'recovery_codes', [
+        return AdminView::renderPage($c, $response, 'recovery_codes', [
             'title' => 'Your recovery codes',
             'codes' => $batch['plain'],
-        ]);
+        ], '');
     }
 
     /**
@@ -403,6 +412,29 @@ final class AdminController
         $session->set(self::SESSION_SETUP_SECRET, $secret);
 
         return $secret;
+    }
+
+    /**
+     * Render the TOTP setup view with the authenticated chrome, loading the
+     * vendored QR generator so the enrolment QR can be drawn client-side.
+     *
+     * @param array<string, mixed> $vars
+     */
+    private static function renderTotpSetup(
+        ContainerInterface $c,
+        ResponseInterface $response,
+        array $vars,
+        int $status = 200
+    ): ResponseInterface {
+        return AdminView::renderPage(
+            $c,
+            $response,
+            'totp_setup',
+            $vars,
+            '',
+            $status,
+            ['/assets/vendor/qrcode.js']
+        );
     }
 
     private static function render(
