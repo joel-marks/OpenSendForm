@@ -362,3 +362,78 @@
 - Docs: CONTEXT.md overwritten, this HISTORY entry appended, QUESTIONS.md
   unchanged (nothing ambiguous this sprint).
 - Deviations from prompt: none.
+
+## 2026-08-24 — Increment 5a: admin authentication stack
+- Branch: feature/increment-5a-admin-auth (off latest main).
+- Scope: a WORKING but UNSTYLED server-rendered admin login. argon2id
+  passwords, optional TOTP 2FA + recovery codes, per-session CSRF, hardened
+  sessions with idle/absolute timeouts. No new Composer dependencies
+  (authorised: none) — TOTP and base32 implemented in-repo.
+- Migration 007: `admins` (email UNIQUE, display_name, password_hash,
+  totp_secret NULL, totp_enabled, recovery_codes NULL, created_at,
+  updated_at, last_login_at NULL). Portable types only.
+- Auth primitives (`src/Auth/`): `PasswordHasher` (argon2id when
+  `PASSWORD_ARGON2ID` is defined, else PASSWORD_DEFAULT; injectable algorithm;
+  hash/verify/needsRehash); `Base32` (RFC 4648, unpadded encode,
+  padding-agnostic/whitespace-tolerant/case-insensitive decode); `Totp`
+  (RFC 6238 SHA1/6-digit/30s, +/-1 window scanned in full for constant time,
+  hash_equals, otpauth:// URI, secret from random_bytes); `RecoveryCodes`
+  (10×10-char, unambiguous alphabet, stored as a JSON array of
+  password_hashes, single-use consume, input-tolerant).
+- `AdminRepository` (prepared statements throughout): createAdmin (hashes),
+  findByEmail (case-insensitive)/findById, recordLogin, updatePassword/
+  updatePasswordHash, setTotp/enableTotp/disableTotp, setRecoveryCodes,
+  consumeRecoveryCode.
+- Session seam: `SessionInterface` (get/set/remove/regenerate/destroy),
+  `NativeSession` (lazy start so the public API emits no cookie; HttpOnly,
+  SameSite=Strict, Secure on HTTPS; regenerate/destroy) — the only place
+  $_SESSION is touched — and `tests/Support/FakeSession` (array-backed,
+  counts regenerate/destroy). `Csrf` (per-session token, hash_equals,
+  fail-closed).
+- `AuthService`: attemptLogin → `LoginOutcome` enum (RateLimited/Invalid/
+  NeedsTotp/Success), rate-limited per-IP AND per-email via the existing
+  RateLimiter; unknown email still verifies against a lazy dummy hash and
+  returns the SAME Invalid outcome as a wrong password (no enumeration);
+  opportunistic rehash on login; session id regenerated on every privilege
+  change; idle (30 min) and absolute (12 h) timeouts enforced in
+  currentAdmin(); verifyTotp() accepts a TOTP or a single-use recovery code.
+- Admin HTTP (`src/Admin/`): `AdminRoutes` + `AdminController`, plain-PHP
+  templates in `templates/admin/` rendered by `TemplateRenderer` with an
+  `h()` escaper. Routes: GET/POST /admin/login, GET/POST /admin/totp
+  (recovery-code path included), POST /admin/logout, GET /admin (placeholder
+  dashboard: signed-in name + logout, nothing else), plus the enrolment flow
+  GET/POST /admin/totp/setup and POST /admin/totp/recovery-codes/regenerate
+  (regeneration gated on a current TOTP code; recovery codes shown ONCE with a
+  stern copy-them-now note). `SecurityHeadersMiddleware` (X-Frame-Options
+  DENY, X-Content-Type-Options nosniff, Referrer-Policy no-referrer,
+  Cache-Control no-store) wraps the whole /admin group; `AuthMiddleware`
+  protects everything except the login/totp routes.
+- Wiring: `AppFactory::create` gains a 7th optional arg `?SessionInterface`
+  (defaults to NativeSession; tests inject FakeSession) and registers the auth
+  stack in the container, then calls `AdminRoutes::register`. public/index.php
+  unchanged (session defaults).
+- CLI: `bin/osf admin:create --email= --name=` prompts for the password
+  interactively (hidden via `stty` on a TTY, visible fallback with a warning),
+  refuses passwords < 12 chars, prints nothing sensitive; usage text updated.
+- Tests (+86, 144 → 230; 1721 assertions): RFC 6238 SHA1 vectors + window
+  (TotpTest); RFC 4648 vectors + random round-trips + tolerant decode
+  (Base32Test); PasswordHasher verify/forced-bcrypt-fallback/needsRehash;
+  RecoveryCodes single-use + tolerance; AuthService full outcome matrix with
+  FakeSession + FixedClock (rate limiting after N failures, dummy-hash timing
+  path executed for unknown email via a spy hasher, session regenerated on
+  login, TOTP gate only when enabled, recovery-code single-use, idle/absolute
+  timeouts); Csrf reject on missing/wrong/never-issued token; HTTP-level
+  AdminHttpTest through the app factory (login renders, wrong creds → generic
+  401, good creds+TOTP off → dashboard, good creds+TOTP on → totp → dashboard,
+  protected route redirects logged-out, security headers present, logout
+  destroys session, CSRF reject missing/wrong); CliAdminTest (shells out:
+  create, weak-password refusal, mismatch, duplicate email); admins-table +
+  version 7 assertions in Schema/MigrationRunner tests. Full suite green.
+- README: added an "Admin panel" section (create an admin via CLI, browse to
+  /admin/login, TOTP + recovery-code note, and a note that styling arrives in
+  the next increment).
+- Docs: CONTEXT.md overwritten, this HISTORY entry appended, QUESTIONS.md
+  unchanged (nothing ambiguous this sprint).
+- Deviations from prompt: none. Escaping helper is provided as a real function
+  `OpenSendForm\Admin\h()` (used as `h()` in templates via `use function`),
+  matching the prompt's `h()` call site.
