@@ -15,14 +15,26 @@ use Psr\Http\Server\RequestHandlerInterface;
  * DENY framing, block MIME sniffing, leak no referrer, and never cache admin
  * pages (they are authenticated and may contain one-time secrets such as
  * freshly generated recovery codes).
+ *
+ * A strict Content-Security-Policy locks every source to our own origin
+ * (with data: images for QR/inline assets). All admin CSS and JS are
+ * self-hosted under public/assets/, and no template emits an inline script,
+ * inline style or inline event handler, so the policy passes untouched. This
+ * middleware wraps only the /admin group — the public JSON API is left
+ * without a CSP (it serves no HTML).
  */
 final class SecurityHeadersMiddleware implements MiddlewareInterface
 {
+    /** The admin Content-Security-Policy; see the class docblock. */
+    public const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; "
+        . "img-src 'self' data:; frame-ancestors 'none'";
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $response = $handler->handle($request);
 
         return $response
+            ->withHeader('Content-Security-Policy', self::CSP)
             ->withHeader('X-Frame-Options', 'DENY')
             ->withHeader('X-Content-Type-Options', 'nosniff')
             ->withHeader('Referrer-Policy', 'no-referrer')

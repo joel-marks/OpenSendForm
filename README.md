@@ -58,8 +58,9 @@ already points SMTP at Mailpit (`SMTP_HOST=mailpit`, `SMTP_PORT=1025`).
    in-flight so the relayed email carries the submitted fields and a failed
    send can be retried. The form's `store_content` toggle only decides
    whether that content is *retained* after a successful delivery — off by
-   default, it's cleared once the email is sent; on, it stays. Until the
-   admin UI ships you can enable retention directly:
+   default, it's cleared once the email is sent; on, it stays. Toggle it per
+   form from the admin UI (Forms → edit → *Retain content after delivery*),
+   or directly for a quick local test:
    ```
    sqlite3 var/data/opensendform.sqlite "UPDATE forms SET store_content = 1;"
    ```
@@ -125,29 +126,64 @@ token is invalid rejects it.
 
 ## Admin panel
 
-The admin panel is served from `/admin` (server-rendered, no JavaScript
-framework). Administrators are created from the CLI; there is no public
-sign-up.
+The admin panel is served from `/admin` — server-rendered plain PHP on
+[Pico.css](https://picocss.com/), no JavaScript framework and no build step.
+Every screen works with JavaScript disabled; JS only adds progressive
+enhancements (theme toggle, click-to-copy, QR code, segmented 2FA inputs).
 
-1. Create an administrator (you will be prompted for the password
-   interactively — it is never passed on the command line, and input is
-   hidden when a terminal is available). Passwords must be at least 12
-   characters:
-   ```
-   php bin/osf admin:create --email=you@example.com --name="Your Name"
-   ```
-2. Browse to `/admin/login` (e.g. `http://localhost:8080/admin/login` with
-   the dev server) and sign in.
+### Screens
+
+- **Dashboard** (`/admin`) — at-a-glance counts (active forms, submissions
+  today, failed/dead totals) and the ten most recent failed/dead submissions,
+  each linking through to the filtered submissions view.
+- **Forms** (`/admin/forms`) — list every form (public key with a copy
+  button, recipient, active and Turnstile badges) and create/edit them:
+  recipient, allowed origins (one per line), the *retain content after
+  delivery* toggle, retention days, active state and the optional Turnstile
+  key pair. Forms can be enabled/disabled from the list.
+- **Submissions** (`/admin/submissions`) — a paginated (50/page), filterable
+  table of delivery **metadata only** — id, form, created, status, attempts
+  and the last error. Failed/dead rows can be retried individually, and
+  *Retry all due now* runs the whole due queue. The fields a visitor typed
+  are never displayed (that content is the in-flight delivery payload; see
+  the storage note above).
+
+### Theming
+
+The UI ships a light and a dark palette. By default it follows the
+browser/OS `prefers-color-scheme`; a toggle in the top nav sets an explicit
+choice, persisted in `localStorage` and applied before first paint (no
+flash). All colour pairs meet WCAG AA contrast. Pico.css and the QR-code
+generator are vendored under `public/assets/vendor/` — nothing is fetched
+from a CDN at runtime, and a strict Content-Security-Policy on `/admin`
+keeps every source self-hosted.
+
+### Administrators & 2FA
+
+Administrators are **provisioned both from the CLI and, once you have one
+account, from the UI** — there is no public sign-up. Create the first admin
+from the CLI (you are prompted for the password interactively; it is never
+passed on the command line, and input is hidden when a terminal is
+available; passwords must be at least 12 characters):
+
+```
+php bin/osf admin:create --email=you@example.com --name="Your Name"
+```
+
+Then browse to `/admin/login` (e.g. `http://localhost:8080/admin/login` with
+the dev server) and sign in.
 
 Two-factor authentication (TOTP) is optional and set up from the dashboard
-after signing in (**Set up two-factor authentication**): scan the QR/otpauth
-URI into an authenticator app, confirm with a 6-digit code, then save the
-one-time **recovery codes** shown once. With 2FA enabled, sign-in requires a
-current code (or a recovery code if you lose your device).
+after signing in (**Set up two-factor authentication**): scan the QR code
+(rendered in-browser; the secret never leaves the page) or enter the key
+manually into an authenticator app, confirm with the 6-digit code, then save
+the one-time **recovery codes** shown once (copy or download them). With 2FA
+enabled, sign-in requires a current code (or a recovery code if you lose your
+device).
 
-> **Note:** this increment ships a functional but **unstyled** admin — plain
-> semantic HTML with no CSS. The visual design system arrives in the next
-> increment.
+Forms can equally be provisioned from the CLI — see `php bin/osf form:create`
+and `php bin/osf form:turnstile` above — so scripted setup and the UI stay
+interchangeable.
 
 ## Public API (v1)
 

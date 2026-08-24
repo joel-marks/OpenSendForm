@@ -49,6 +49,32 @@ final class AdminRoutes
                 self::handler($container, [AdminController::class, 'regenerateRecoveryCodes'])
             )->add($auth);
 
+            // Forms CRUD.
+            $group->get('/forms', self::handler($container, [FormsController::class, 'index']))
+                ->add($auth);
+            $group->get('/forms/new', self::handler($container, [FormsController::class, 'createForm']))
+                ->add($auth);
+            $group->post('/forms', self::handler($container, [FormsController::class, 'create']))
+                ->add($auth);
+            $group->get('/forms/{id}/edit', self::handlerWithArgs($container, [FormsController::class, 'editForm']))
+                ->add($auth);
+            $group->post('/forms/{id}', self::handlerWithArgs($container, [FormsController::class, 'update']))
+                ->add($auth);
+            $group->post('/forms/{id}/enable', self::handlerWithArgs($container, [FormsController::class, 'enable']))
+                ->add($auth);
+            $group->post('/forms/{id}/disable', self::handlerWithArgs($container, [FormsController::class, 'disable']))
+                ->add($auth);
+
+            // Submissions.
+            $group->get('/submissions', self::handler($container, [SubmissionsController::class, 'index']))
+                ->add($auth);
+            $group->post('/submissions/retry-due', self::handler($container, [SubmissionsController::class, 'retryDue']))
+                ->add($auth);
+            $group->post(
+                '/submissions/{id}/retry',
+                self::handlerWithArgs($container, [SubmissionsController::class, 'retry'])
+            )->add($auth);
+
             // Dashboard is the group root: /admin.
             $group->get('', self::handler($container, [AdminController::class, 'dashboard']))
                 ->add($auth);
@@ -70,6 +96,23 @@ final class AdminRoutes
             ResponseInterface $response
         ) use ($container, $target): ResponseInterface {
             return $target($container, $request, $response);
+        };
+    }
+
+    /**
+     * As handler(), but for routes with URL arguments ({id}), forwarding the
+     * matched args as a fourth parameter.
+     *
+     * @param callable(ContainerInterface, ServerRequestInterface, ResponseInterface, array<string,string>): ResponseInterface $target
+     */
+    private static function handlerWithArgs(ContainerInterface $container, callable $target): \Closure
+    {
+        return function (
+            ServerRequestInterface $request,
+            ResponseInterface $response,
+            array $args
+        ) use ($container, $target): ResponseInterface {
+            return $target($container, $request, $response, $args);
         };
     }
 }

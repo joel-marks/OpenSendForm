@@ -242,6 +242,142 @@ final class SubmissionRepository
     }
 
     /**
+     * Count submissions created at or after a portable 'Y-m-d H:i:s' UTC
+     * cutoff (used for the dashboard's "today" figure — the caller derives
+     * the cutoff from the clock so it stays testable).
+     */
+    public function countSince(string $cutoff): int
+    {
+        $row = $this->db->fetchOne(
+            'SELECT COUNT(*) AS c FROM submissions WHERE created_at >= :cutoff',
+            ['cutoff' => $cutoff]
+        );
+
+        return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Count submissions in a given status.
+     */
+    public function countByStatus(string $status): int
+    {
+        $row = $this->db->fetchOne(
+            'SELECT COUNT(*) AS c FROM submissions WHERE status = :status',
+            ['status' => $status]
+        );
+
+        return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Most recent submissions in any of the given statuses, newest first.
+     * Metadata only (never content); includes last_error for the dashboard's
+     * problem list.
+     *
+     * @param array<int, string> $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    public function recentByStatuses(array $statuses, int $limit): array
+    {
+        if ($statuses === []) {
+            return [];
+        }
+
+        [$placeholders, $params] = self::inClause($statuses, 'st');
+
+        $sql = 'SELECT s.id, s.form_id, f.form_key, f.name AS form_name,
+                       s.created_at, s.status, s.attempts, s.last_error
+                  FROM submissions s
+                  LEFT JOIN forms f ON f.id = s.form_id
+                 WHERE s.status IN (' . $placeholders . ')
+                 ORDER BY s.id DESC
+                 LIMIT ' . max(1, $limit);
+
+        return $this->db->fetchAll($sql, $params);
+    }
+
+    /**
+     * One page of submissions for the admin table, filtered optionally by
+     * status and/or form, newest first. Metadata only — content is never
+     * selected.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listPage(?string $status, ?int $formId, int $limit, int $offset): array
+    {
+        [$where, $params] = self::filter($status, $formId);
+
+        $sql = 'SELECT s.id, s.form_id, f.form_key, f.name AS form_name,
+                       s.created_at, s.status, s.attempts, s.last_error
+                  FROM submissions s
+                  LEFT JOIN forms f ON f.id = s.form_id'
+            . $where
+            . ' ORDER BY s.id DESC'
+            . ' LIMIT ' . max(1, $limit)
+            . ' OFFSET ' . max(0, $offset);
+
+        return $this->db->fetchAll($sql, $params);
+    }
+
+    /**
+     * Total submissions matching the same optional status/form filter, for
+     * pagination.
+     */
+    public function countFiltered(?string $status, ?int $formId): int
+    {
+        [$where, $params] = self::filter($status, $formId);
+
+        $row = $this->db->fetchOne('SELECT COUNT(*) AS c FROM submissions s' . $where, $params);
+
+        return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Build a WHERE fragment (leading space, or empty) and its bound params
+     * for the optional status/form filter shared by listPage/countFiltered.
+     *
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private static function filter(?string $status, ?int $formId): array
+    {
+        $conditions = [];
+        $params = [];
+
+        if ($status !== null && $status !== '') {
+            $conditions[] = 's.status = :status';
+            $params['status'] = $status;
+        }
+        if ($formId !== null) {
+            $conditions[] = 's.form_id = :form_id';
+            $params['form_id'] = $formId;
+        }
+
+        $where = $conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions);
+
+        return [$where, $params];
+    }
+
+    /**
+     * Build a placeholder list and bound params for a values IN (...) clause,
+     * keeping every value parameterised.
+     *
+     * @param array<int, string> $values
+     * @return array{0: string, 1: array<string, mixed>}
+     */
+    private static function inClause(array $values, string $prefix): array
+    {
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($values) as $i => $value) {
+            $name = $prefix . $i;
+            $placeholders[] = ':' . $name;
+            $params[$name] = $value;
+        }
+
+        return [implode(', ', $placeholders), $params];
+    }
+
+    /**
      * Current UTC timestamp in a portable, lexicographically-sortable form.
      */
     private static function now(): string
