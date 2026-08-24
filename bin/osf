@@ -3,10 +3,15 @@
 
 declare(strict_types=1);
 
+use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Mail\DeliveryService;
+use OpenSendForm\Mail\MessageBuilder;
+use OpenSendForm\Mail\PhpMailerMailer;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
+use OpenSendForm\Submission\SubmissionRepository;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -40,6 +45,12 @@ try {
             exit(cmdFormSetActive($db, $args, true));
         case 'form:disable':
             exit(cmdFormSetActive($db, $args, false));
+        case 'mail:retry':
+            exit(cmdMailRetry($db, $config));
+        case 'mail:test':
+            exit(cmdMailTest($config, $args));
+        case 'submissions:list':
+            exit(cmdSubmissionsList($db, $args));
         default:
             fwrite(STDERR, "Unknown command: {$command}\n\n" . usage());
             exit(1);
@@ -140,6 +151,122 @@ function cmdFormSetActive(Database $db, array $args, bool $active): int
     return 0;
 }
 
+/**
+ * mail:retry — re-attempt every failed submission whose retry is due.
+ *
+ * Intended for a cPanel cron entry. Prints a one-line summary and always
+ * exits 0 so a transient mail outage never marks the cron job as failing.
+ */
+function cmdMailRetry(Database $db, Config $config): int
+{
+    $delivery = buildDeliveryService($db, $config);
+    $summary = $delivery->retryDue();
+
+    fwrite(STDOUT, sprintf(
+        "mail:retry — attempted %d: sent %d, failed %d, dead %d, skipped %d\n",
+        $summary['attempted'],
+        $summary[DeliveryService::RESULT_SENT],
+        $summary[DeliveryService::RESULT_FAILED],
+        $summary[DeliveryService::RESULT_DEAD],
+        $summary[DeliveryService::RESULT_SKIPPED]
+    ));
+
+    return 0;
+}
+
+/**
+ * mail:test --to=ADDRESS — send a fixed message through the configured SMTP.
+ *
+ * The CLI form of the installer's future test-send. Exits 0 on success, 1 on
+ * failure (printing the error).
+ */
+function cmdMailTest(Config $config, array $args): int
+{
+    $to = null;
+    foreach ($args as $arg) {
+        if (str_starts_with($arg, '--to=')) {
+            $to = substr($arg, strlen('--to='));
+        } else {
+            fwrite(STDERR, "Unknown option: {$arg}\n\n" . usage());
+            return 1;
+        }
+    }
+
+    if ($to === null || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+        fwrite(STDERR, "mail:test requires a valid --to=ADDRESS\n\n" . usage());
+        return 1;
+    }
+
+    $mailer = new PhpMailerMailer($config);
+    try {
+        $mailer->send(
+            $to,
+            null,
+            'OpenSendForm test message',
+            "This is a test message from OpenSendForm.\n\n"
+            . "If you received it, your SMTP settings are working."
+        );
+    } catch (Throwable $e) {
+        fwrite(STDERR, "mail:test FAILED sending to {$to}: " . $e->getMessage() . "\n");
+        return 1;
+    }
+
+    fwrite(STDOUT, "mail:test OK — message sent to {$to} via {$config->smtpHost()}:{$config->smtpPort()}\n");
+
+    return 0;
+}
+
+/**
+ * submissions:list [--status=X] — metadata only; never any submitted content.
+ */
+function cmdSubmissionsList(Database $db, array $args): int
+{
+    $status = null;
+    foreach ($args as $arg) {
+        if (str_starts_with($arg, '--status=')) {
+            $status = substr($arg, strlen('--status='));
+        } else {
+            fwrite(STDERR, "Unknown option: {$arg}\n\n" . usage());
+            return 1;
+        }
+    }
+
+    $rows = (new SubmissionRepository($db))->listSummaries($status);
+
+    if ($rows === []) {
+        fwrite(STDOUT, "No submissions" . ($status !== null ? " with status '{$status}'" : '') . ".\n");
+        return 0;
+    }
+
+    foreach ($rows as $row) {
+        fwrite(STDOUT, sprintf(
+            "#%d  %s  %s  %s  attempts=%d\n",
+            (int) $row['id'],
+            (string) ($row['form_key'] ?? '(deleted form)'),
+            (string) $row['created_at'],
+            (string) $row['status'],
+            (int) $row['attempts']
+        ));
+    }
+
+    return 0;
+}
+
+/**
+ * Assemble a DeliveryService from the configured SMTP transport.
+ */
+function buildDeliveryService(Database $db, Config $config): DeliveryService
+{
+    return new DeliveryService(
+        new SubmissionRepository($db),
+        new FormRepository($db),
+        new MessageBuilder(),
+        new PhpMailerMailer($config),
+        $config,
+        new SystemClock()
+    );
+}
+
 function usage(): string
 {
     return <<<TXT
@@ -150,10 +277,16 @@ function usage(): string
       bin/osf form:list
       bin/osf form:enable ID
       bin/osf form:disable ID
+      bin/osf mail:retry
+      bin/osf mail:test --to=ADDRESS
+      bin/osf submissions:list [--status=STATUS]
 
     Notes:
       --origin may be repeated to allow more than one origin.
       An origin is scheme+host+optional port, e.g. https://example.com
+      mail:retry re-sends failed submissions whose backoff has elapsed
+        (intended for a cPanel cron entry); it always exits 0.
+      submissions:list shows metadata only — never submitted content.
 
     TXT;
 }
