@@ -275,3 +275,38 @@
   the owner; (2) the storage-only guard keys off an empty SMTP_HOST, which the
   env parser can't express, so it is implemented via fromValues()/the front
   controller and a dedicated MAIL_ENABLED flag is suggested for later.
+
+## 2026-08-24 — Follow-up: mail content lifecycle + MAIL_ENABLED
+- Branch: fix/mail-content-lifecycle (off latest main, PR #7 merged).
+  Resolves both Increment 3 QUESTIONS.md items per the architect's rulings.
+- Ruling 1 (content lifecycle): `SubmissionRepository::recordSubmission()`
+  now always persists `content` as the in-flight delivery payload,
+  regardless of the owning form's `store_content` toggle (previously it was
+  discarded at record time when the toggle was off). Added
+  `SubmissionRepository::clearContent($id)`; `DeliveryService::
+  attemptDelivery()` calls it right after `markSent()` when the form's
+  `store_content` is 0. Failed/dead submissions keep content untouched (for
+  retry and operator recovery); the retention purge is the only other thing
+  that removes it. `store_content` now means "retain content after
+  successful delivery," not "store content at all" — docblocks in
+  SubmissionRepository, StoreStage and DeliveryService, and the README's
+  end-to-end recipe, reworded to say exactly that.
+- Ruling 2 (MAIL_ENABLED): added `MAIL_ENABLED` to Config (default '1',
+  env-overridable, typed `mailEnabled(): bool` accessor accepting
+  1/true/yes/on case-insensitively). `DeliveryStage::shouldAttempt()` and
+  `public/index.php`'s mailer wiring both now require `mailEnabled() &&
+  smtpHost() !== ''` — MAIL_ENABLED is the primary switch, the SMTP_HOST
+  emptiness check remains as a secondary guard (kept for the storage-only-
+  via-fromValues() seam already in place).
+- Tests: rewrote the store_content toggle tests in SubmissionRepositoryTest
+  and SubmitEndpointTest to assert content is stored regardless of the
+  toggle; added SubmissionRepositoryTest::testClearContentNullsTheColumn;
+  added four DeliveryServiceTest cases (sent+store_content=0 nulls content,
+  sent+store_content=1 retains, failed retains content for retry, dead
+  retains content); added MailDeliveryPipelineTest::
+  testMailDisabledLeavesSubmissionReceivedEvenWithSmtpConfigured; added two
+  MAIL_ENABLED cases to ConfigMailTest. Full suite green (127 tests, 1364
+  assertions, was 120).
+- Docs: CONTEXT.md overwritten, both QUESTIONS.md Increment-3 items marked
+  RESOLVED with one-line decision notes, this entry appended.
+- Deviations from prompt: none. No new Composer dependencies added.

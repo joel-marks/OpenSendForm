@@ -13,7 +13,14 @@
 
 ## Increment 3
 
-1. **Delivery content vs. the `store_content` toggle. OPEN.**
+1. **Delivery content vs. the `store_content` toggle. RESOLVED (2026-08-24).**
+   Decision: option (a) — content is always stored at submission time as the
+   in-flight delivery payload; `store_content` now governs retention after a
+   successful send (cleared on `sent` when off, kept when on; `failed`/`dead`
+   always keep it for retry/recovery until the retention purge). See
+   fix/mail-content-lifecycle and the HISTORY.md entry for 2026-08-24.
+
+   Original question, for context:
    `DeliveryService::attemptDelivery()` loads the submission row and builds the
    email from its stored `content` (as the sprint prompt specifies). But
    `store_content` defaults OFF and, when off, the `content` column is NULL —
@@ -34,7 +41,14 @@
    local test recipe enables `store_content` so the email shows fields.
 
 2. **Storage-only requires an empty `SMTP_HOST`, which `fromEnvironment()`
-   cannot express. RESOLVED in code, worth confirming.**
+   cannot express. RESOLVED (2026-08-24).**
+   Decision: added a dedicated `MAIL_ENABLED` config flag (env-overridable,
+   default '1'). It is now the primary delivery switch — delivery is
+   attempted only when `MAIL_ENABLED` is truthy AND `SMTP_HOST` is
+   non-empty — with the host check kept only as a secondary guard. See
+   fix/mail-content-lifecycle and the HISTORY.md entry for 2026-08-24.
+
+   Original question, for context:
    The empty-value fallback in `Config::fromEnvironment()` keeps the
    `SMTP_HOST` default ('localhost') even when the env sets it to '' (locked
    by `testBlankAndFalseValuesFallBackToDefaults`). Storage-only operation
