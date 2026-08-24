@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (feature/increment-5a-admin-auth, Claude Code)
+Last updated: 2026-08-24 (fix/5a-hardening, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end and RELAYS BY EMAIL.
@@ -12,8 +12,11 @@ operator cron. Increment 4 added optional per-form Cloudflare Turnstile.
 This sprint (Increment 5a) added the ADMIN AUTHENTICATION STACK: a
 server-rendered `/admin` login with argon2id passwords, optional TOTP 2FA
 (+ recovery codes), per-session CSRF, session hardening and idle/absolute
-timeouts. The admin UI is FUNCTIONAL BUT UNSTYLED (5b brings the design
-system). Test suite green (230 tests). CI runs it on every PR/push.
+timeouts. A follow-up hardening patch (fix/5a-hardening) then added TOTP
+rate limiting, pending-TOTP expiry and session strict mode (see Admin
+authentication section). The admin UI is FUNCTIONAL BUT UNSTYLED (5b
+brings the design system). Test suite green (239 tests). CI runs it on
+every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -92,26 +95,33 @@ relayed by authenticated SMTP to the site owner.
   setTotp/enableTotp/disableTotp, setRecoveryCodes, consumeRecoveryCode.
 - Session seam: `SessionInterface` (get/set/remove/regenerate/destroy) with
   `NativeSession` (lazy start — public API never gets a cookie; HttpOnly,
-  SameSite=Strict, Secure on HTTPS; regenerate/destroy) and a
-  `tests/Support/FakeSession` (array-backed, counts regenerate/destroy).
-  $_SESSION is touched ONLY inside NativeSession.
+  SameSite=Strict, Secure on HTTPS, `session.use_strict_mode` enabled before
+  `session_start()` to refuse attacker-supplied session ids; regenerate/
+  destroy) and a `tests/Support/FakeSession` (array-backed, counts
+  regenerate/destroy). $_SESSION is touched ONLY inside NativeSession.
 - `AuthService`: attemptLogin → `LoginOutcome` enum (RateLimited/Invalid/
   NeedsTotp/Success). Rate-limited per-IP AND per-email via the existing
   RateLimiter. Unknown email still runs a verify against a lazy dummy hash
   (timing); unknown email and wrong password both return Invalid (no
   enumeration). Opportunistic rehash on login when needsRehash. Session id
   regenerated on every privilege change; idle timeout 30 min, absolute 12 h
-  enforced in currentAdmin(). verifyTotp() accepts a TOTP code or a single-use
-  recovery code. `Csrf` (issue/validate, hash_equals, per session).
+  enforced in currentAdmin(). The password-verified-but-pending-TOTP marker
+  is timestamped and expires after 300s (`pendingTotpAdminId()` clears and
+  returns null past that, so a stale password step can't be used to
+  complete 2FA indefinitely). `verifyTotp(code, ip)` → `TotpOutcome` enum
+  (RateLimited/Invalid/Success); rate-limited per-admin (5/900s) AND per-IP
+  (10/900s) before any code/recovery-code verification, mirroring the login
+  limiter. `Csrf` (issue/validate, hash_equals, per session).
 - Routes (`AdminRoutes` + `AdminController`, plain-PHP `templates/admin/*` via
   `TemplateRenderer` + `h()` escaper): GET/POST `/admin/login`, GET/POST
-  `/admin/totp` (incl. recovery path), POST `/admin/logout`, GET `/admin`
-  (placeholder dashboard: name + logout), enrolment GET/POST
-  `/admin/totp/setup` (+ POST `/admin/totp/recovery-codes/regenerate`, gated
-  on a current TOTP code). `SecurityHeadersMiddleware` (X-Frame-Options DENY,
-  X-Content-Type-Options nosniff, Referrer-Policy no-referrer, Cache-Control
-  no-store) wraps the whole group; `AuthMiddleware` protects all but
-  login/totp.
+  `/admin/totp` (incl. recovery path; POST returns 429 with a generic
+  "Too many attempts" message on `TotpOutcome::RateLimited`), POST
+  `/admin/logout`, GET `/admin` (placeholder dashboard: name + logout),
+  enrolment GET/POST `/admin/totp/setup` (+ POST
+  `/admin/totp/recovery-codes/regenerate`, gated on a current TOTP code).
+  `SecurityHeadersMiddleware` (X-Frame-Options DENY, X-Content-Type-Options
+  nosniff, Referrer-Policy no-referrer, Cache-Control no-store) wraps the
+  whole group; `AuthMiddleware` protects all but login/totp.
 - Wiring: `AppFactory::create` gains a 7th optional arg `?SessionInterface`
   (defaults to NativeSession; tests inject FakeSession) and registers the auth
   stack in the container, then calls `AdminRoutes::register`.
@@ -130,11 +140,14 @@ SubmitPipelineOrderTest.
 ## What exists now
 Increments 0–4 as described above and in HISTORY (public v1 API + abuse
 pipeline, SMTP relay with retry, per-form Turnstile). Only new hard
-dependency to date is phpmailer/phpmailer ^6 (Increment 3). This sprint
-(Increment 5a) added `src/Auth/*`, `src/Admin/*`, `templates/admin/*`,
-migration 007, the `SessionInterface` seam + `FakeSession`/
-`CountingPasswordHasher` test doubles, `bin/osf admin:create`, and the
-AppFactory session arg + container wiring. No new dependencies.
+dependency to date is phpmailer/phpmailer ^6 (Increment 3). Increment 5a
+added `src/Auth/*`, `src/Admin/*`, `templates/admin/*`, migration 007, the
+`SessionInterface` seam + `FakeSession`/`CountingPasswordHasher` test
+doubles, `bin/osf admin:create`, and the AppFactory session arg + container
+wiring. The fix/5a-hardening follow-up added `src/Auth/TotpOutcome.php`
+and hardened `AuthService`/`NativeSession`/`AdminController` as described
+above (TOTP rate limiting, pending-TOTP expiry, session strict mode). No
+new dependencies.
 
 ## Known gaps / not built (by design this sprint)
 - Admin CRUD for forms/submissions, any CSS/design system (5b), password

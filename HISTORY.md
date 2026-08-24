@@ -437,3 +437,50 @@
 - Deviations from prompt: none. Escaping helper is provided as a real function
   `OpenSendForm\Admin\h()` (used as `h()` in templates via `use function`),
   matching the prompt's `h()` call site.
+
+## 2026-08-24 — fix/5a-hardening: TOTP rate limit, pending expiry, session strict mode
+- Branch: fix/5a-hardening (off latest main). Follow-up patch implementing
+  four architect rulings from code review of Increment 5a. No new Composer
+  dependencies (authorised: none).
+- Ruling 1 — `AuthService::verifyTotp()` now takes a `$ip` parameter and
+  returns a new `TotpOutcome` enum (RateLimited/Invalid/Success) instead of
+  bool. Before any code/recovery-code verification it hits two RateLimiter
+  buckets — `admintotp:admin:<id>` (max 5) and `admintotp:ip:<ip>` (max 10),
+  both over the existing 900s window — mirroring the login limiter's
+  both-buckets-must-pass shape. `AdminController::totp()` passes the
+  request's remote IP and, on `RateLimited`, renders the totp view with
+  "Too many attempts. Please try again later." at HTTP 429.
+- Ruling 2 — parking `SESSION_PENDING_TOTP` now also stamps
+  `SESSION_PENDING_TOTP_AT` with the current clock time.
+  `pendingTotpAdminId()` clears both keys and returns null once more than
+  300s have elapsed, so a stale password-verified step can't be replayed
+  indefinitely; `verifyTotp()` and `totpForm()`/`totp()` fall through to
+  their existing "no pending login" handling (redirect to /admin/login),
+  so no controller branching was needed beyond passing `$ip` through.
+- Ruling 3 — `NativeSession::ensureStarted()` sets
+  `ini_set('session.use_strict_mode', '1')` before `session_start()`
+  (skipped when a session is already active, as before), with a comment on
+  why: refuses attacker-supplied session ids (session fixation).
+- Ruling 4 — added `AdminHttpTest::testLoginEscapesSubmittedEmailInErrorResponse`:
+  POSTs `"/><script>alert(1)</script>` as the email with a wrong password
+  and asserts the raw `<script>alert(1)</script>` sequence is absent while
+  its `htmlspecialchars`-escaped form is present. Passed without further
+  code changes — the login template already re-renders `email` through the
+  `h()` escaper — so this is a regression lock, not a fix.
+- Tests (+9, 239 total; 1759 assertions): AuthServiceTest gained TOTP
+  rate-limit coverage (per-admin cap, per-IP cap, window rollover via
+  FixedClock at a shortened 60s window kept inside the 300s pending TTL so
+  the two mechanisms don't confound each other) and pending-TOTP-expiry
+  coverage (fake clock past 300s ⇒ `pendingTotpAdminId()` null and
+  `verifyTotp()` treats it as no pending login; just-under-300s stays
+  alive). AdminHttpTest gained HTTP-level coverage for the 429 outcome
+  (5 wrong attempts then a 429 with the generic message) and the expired
+  -pending redirect, plus the XSS regression test above. Existing
+  `verifyTotp()` call sites (AuthServiceTest, AdminController) updated for
+  the new `(code, ip): TotpOutcome` signature. Full suite green.
+- Docs: CONTEXT.md updated (Admin authentication section describes the
+  hardening; "What exists now" notes the follow-up patch and its new file
+  `src/Auth/TotpOutcome.php`), this HISTORY entry appended. QUESTIONS.md
+  unchanged — the architect's rulings for this patch were prescriptive, not
+  open questions, so nothing new was logged there.
+- Deviations from prompt: none.
