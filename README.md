@@ -123,6 +123,32 @@ with malformed data the submission is allowed through (the honeypot, submit
 token and rate limits still apply) — only a response that positively says the
 token is invalid rejects it.
 
+## Admin panel
+
+The admin panel is served from `/admin` (server-rendered, no JavaScript
+framework). Administrators are created from the CLI; there is no public
+sign-up.
+
+1. Create an administrator (you will be prompted for the password
+   interactively — it is never passed on the command line, and input is
+   hidden when a terminal is available). Passwords must be at least 12
+   characters:
+   ```
+   php bin/osf admin:create --email=you@example.com --name="Your Name"
+   ```
+2. Browse to `/admin/login` (e.g. `http://localhost:8080/admin/login` with
+   the dev server) and sign in.
+
+Two-factor authentication (TOTP) is optional and set up from the dashboard
+after signing in (**Set up two-factor authentication**): scan the QR/otpauth
+URI into an authenticator app, confirm with a 6-digit code, then save the
+one-time **recovery codes** shown once. With 2FA enabled, sign-in requires a
+current code (or a recovery code if you lose your device).
+
+> **Note:** this increment ships a functional but **unstyled** admin — plain
+> semantic HTML with no CSS. The visual design system arrives in the next
+> increment.
+
 ## Public API (v1)
 
 The public API is JSON-only and CORS-aware. All responses share one shape:

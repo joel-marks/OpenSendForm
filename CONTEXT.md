@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (feature/increment-4-turnstile, Claude Code)
+Last updated: 2026-08-24 (feature/increment-5a-admin-auth, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end and RELAYS BY EMAIL.
@@ -8,9 +8,12 @@ On top of the Increment 1 data model there is a versioned v1 API (token
 endpoint, CORS preflights, `POST /v1/form/{form_key}/submit`) driven by an
 ordered validation/abuse pipeline. Submissions that pass are stored, then a
 single in-request SMTP send is attempted; failures are retried by an
-operator cron. This sprint (Increment 4) added optional per-form Cloudflare
-Turnstile verification as a new pipeline stage. Test suite green (144 tests).
-CI runs it on every PR/push.
+operator cron. Increment 4 added optional per-form Cloudflare Turnstile.
+This sprint (Increment 5a) added the ADMIN AUTHENTICATION STACK: a
+server-rendered `/admin` login with argon2id passwords, optional TOTP 2FA
+(+ recovery codes), per-session CSRF, session hardening and idle/absolute
+timeouts. The admin UI is FUNCTIONAL BUT UNSTYLED (5b brings the design
+system). Test suite green (230 tests). CI runs it on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -40,67 +43,81 @@ relayed by authenticated SMTP to the site owner.
   submissions always keep content (for retry/operator recovery) until the
   normal retention purge. See Mail relay section and QUESTIONS.md item 1.
 
-## Mail relay (Increment 3 + follow-up)
-- Mail policy (hard rules): From is ALWAYS the configured service address;
-  Reply-To is the submitter's `email` field only when syntactically valid;
-  no other submitter data reaches any header. Subject is the form name with
-  control chars stripped; body is a plain-text field listing with names and
-  values sanitised and capped. `Mail\MessageBuilder` enforces this and is the
-  last line of defence alongside (not instead of) PHPMailer's own checks.
-- `Mail\MailerInterface` (`send(to, replyTo?, subject, body)`, throws on
-  failure) with `PhpMailerMailer` (SMTP from Config, 15s timeout, exceptions
-  on, `html5` address validator so `noreply@localhost` is accepted) and a
-  `tests/Support/FakeMailer` double (records calls, scriptable to fail).
-- `Mail\DeliveryService::attemptDelivery(id)` loads submission+form, builds
-  the message, sends. Success → status `sent`, then content is cleared via
-  `SubmissionRepository::clearContent()` unless the form's store_content is
-  on. Failure → `failed`, attempts+1, last_error, next_attempt_at per backoff
-  (content untouched, so a retry still has it) — unless attempts reach
-  MAIL_MAX_ATTEMPTS, then `dead` (content still untouched). `retryDue(now?)`
-  re-attempts every `failed` row whose next_attempt_at is due (fake-clock
-  testable) and returns a count summary. Backoff = MAIL_RETRY_BACKOFF_MINUTES
-  list, last value repeating.
-- Synchronous-first, no queue: `Submit\Stages\DeliveryStage` is the terminal
-  pipeline stage. StoreStage now returns null (stashing the new id on the
-  context, content always persisted) and DeliveryStage makes at most one send
-  then ALWAYS returns success, so a delivery failure never changes the
-  submitter's `{"ok":true}`. Skips (leaving status `received`) when no mailer
-  is wired, MAIL_ENABLED is falsy, SMTP_HOST is empty, or nothing was stored.
-- Config: MAIL_ENABLED (default '1', typed `mailEnabled()`; primary delivery
-  switch — SMTP_HOST emptiness is now only a secondary guard, kept for the
-  fromValues()-only storage-only seam), SMTP_USER, SMTP_PASS, SMTP_ENCRYPTION
-  (none|starttls|smtps, default none), MAIL_FROM_ADDRESS (noreply@localhost),
-  MAIL_FROM_NAME (OpenSendForm), MAIL_MAX_ATTEMPTS (5),
-  MAIL_RETRY_BACKOFF_MINUTES (1,5,30,120). `Config::fromValues()` honours
-  explicit empties (env parser still protects defaults); front controller
-  wires a real mailer only when `mailEnabled() && smtpHost() !== ''`.
-- Migration 005 adds submissions.attempts / last_attempt_at / next_attempt_at
-  / last_error (one portable ADD COLUMN each).
-- `bin/osf`: `mail:retry` (runs retryDue, prints summary, exit 0 — for cron),
-  `mail:test --to=ADDRESS`, `submissions:list [--status=X]` (metadata only,
-  never content).
+## Mail relay (Increment 3 + follow-up) — condensed; see HISTORY for detail
+- Policy (hard rules, enforced by `Mail\MessageBuilder`): From is ALWAYS the
+  service address; Reply-To is the submitter's `email` only when valid; no
+  other submitter data reaches a header; subject = form name (control chars
+  stripped); body = sanitised/capped field listing.
+- `Mail\MailerInterface` (`send(to, replyTo?, subject, body)`, throws) →
+  `PhpMailerMailer` (SMTP from Config) + `tests/Support/FakeMailer`.
+  `Mail\DeliveryService` builds+sends: success → `sent` (content cleared via
+  `clearContent()` unless store_content); failure → `failed` (+attempts/
+  last_error/next_attempt_at) then `dead` at MAIL_MAX_ATTEMPTS; `retryDue()`
+  re-attempts due rows (fake-clock testable). `DeliveryStage` is terminal and
+  ALWAYS returns success (a send failure never changes `{"ok":true}`); skips
+  when no mailer/MAIL_ENABLED falsy/SMTP_HOST empty/nothing stored.
+- Config mail keys: MAIL_ENABLED (primary switch, `mailEnabled()`), SMTP_USER/
+  PASS/ENCRYPTION (none|starttls|smtps), MAIL_FROM_ADDRESS/NAME,
+  MAIL_MAX_ATTEMPTS, MAIL_RETRY_BACKOFF_MINUTES. Migration 005 adds the
+  submissions retry columns. `bin/osf`: `mail:retry` (cron), `mail:test`,
+  `submissions:list` (metadata only).
 
-## Turnstile (Increment 4)
-- Optional PER FORM, no global config: enabled iff the form has BOTH
-  `turnstile_sitekey` and `turnstile_secret` stored (migration 006 adds both,
-  one portable ADD COLUMN each). Both-or-neither enforced by
-  `FormRepository::setTurnstile(id, sitekey, secret)` (nulls/blanks clear).
-- `Turnstile\TurnstileVerifierInterface` (`verify(secret, token, remoteIp):
-  TurnstileResult` enum VALID/INVALID/UNAVAILABLE) with `CurlTurnstileVerifier`
-  (PHP curl straight to challenges.cloudflare.com/turnstile/v0/siteverify;
-  connect 2s / total 3s; any transport error/timeout/malformed body → UNAVAILABLE)
-  and `tests/Support/FakeTurnstileVerifier` (records calls, scriptable result).
-- `Submit\Stages\TurnstileStage` runs between the token stage and email
-  validation. Skips instantly (no network) when the form is not Turnstile-
-  configured. Client token is the reserved field `_osf_cf`. Missing token →
-  400 `turnstile_required`; positively-invalid → 400 `turnstile_failed`
-  (nothing stored). FAIL-OPEN: VALID and UNAVAILABLE both proceed.
-- Token endpoint adds `"turnstile":{"sitekey":"..."}` to its JSON iff the form
-  has Turnstile enabled. The secret is NEVER exposed by any endpoint. Verifier
-  is injected through `AppFactory::create`/`SubmitPipeline::create` (defaults
-  to CurlTurnstileVerifier).
+## Turnstile (Increment 4) — condensed; see HISTORY for detail
+- Optional PER FORM (no global switch): enabled iff both `turnstile_sitekey`
+  and `turnstile_secret` are stored (migration 006). Both-or-neither via
+  `FormRepository::setTurnstile()`.
+- `Turnstile\TurnstileVerifierInterface` → enum VALID/INVALID/UNAVAILABLE,
+  `CurlTurnstileVerifier` (curl to Cloudflare siteverify, tight timeouts, any
+  error → UNAVAILABLE) + `FakeTurnstileVerifier`. `Submit\Stages\TurnstileStage`
+  (between token and email; client token `_osf_cf`): missing → 400
+  `turnstile_required`, positively-invalid → 400 `turnstile_failed`; FAIL-OPEN
+  (VALID and UNAVAILABLE both proceed). Token endpoint advertises the sitekey
+  only (secret NEVER exposed). Verifier injected via AppFactory/SubmitPipeline.
 - `bin/osf form:turnstile ID --sitekey=X --secret=Y` (enable) / `... --disable`
   (clear both).
+
+## Admin authentication (Increment 5a)
+- Migration 007 adds `admins` (email UNIQUE, display_name, password_hash,
+  totp_secret NULL, totp_enabled, recovery_codes NULL (JSON of hashes),
+  created_at/updated_at, last_login_at NULL). Portable types.
+- `src/Auth/*` primitives (no new deps): `PasswordHasher` (argon2id when
+  `PASSWORD_ARGON2ID` is defined, else PASSWORD_DEFAULT; algorithm injectable;
+  hash/verify/needsRehash; not final so tests spy verify()), `Base32` (RFC
+  4648, unpadded encode, padding-agnostic decode), `Totp` (RFC 6238
+  SHA1/6-digit/30s, +/-1 window, hash_equals, otpauth URI, secret via
+  random_bytes), `RecoveryCodes` (10×10-char, JSON password_hashes,
+  single-use consume, input-tolerant).
+- `AdminRepository` (prepared statements): createAdmin (hashes), findByEmail
+  (case-insensitive)/findById, recordLogin, updatePassword/updatePasswordHash,
+  setTotp/enableTotp/disableTotp, setRecoveryCodes, consumeRecoveryCode.
+- Session seam: `SessionInterface` (get/set/remove/regenerate/destroy) with
+  `NativeSession` (lazy start — public API never gets a cookie; HttpOnly,
+  SameSite=Strict, Secure on HTTPS; regenerate/destroy) and a
+  `tests/Support/FakeSession` (array-backed, counts regenerate/destroy).
+  $_SESSION is touched ONLY inside NativeSession.
+- `AuthService`: attemptLogin → `LoginOutcome` enum (RateLimited/Invalid/
+  NeedsTotp/Success). Rate-limited per-IP AND per-email via the existing
+  RateLimiter. Unknown email still runs a verify against a lazy dummy hash
+  (timing); unknown email and wrong password both return Invalid (no
+  enumeration). Opportunistic rehash on login when needsRehash. Session id
+  regenerated on every privilege change; idle timeout 30 min, absolute 12 h
+  enforced in currentAdmin(). verifyTotp() accepts a TOTP code or a single-use
+  recovery code. `Csrf` (issue/validate, hash_equals, per session).
+- Routes (`AdminRoutes` + `AdminController`, plain-PHP `templates/admin/*` via
+  `TemplateRenderer` + `h()` escaper): GET/POST `/admin/login`, GET/POST
+  `/admin/totp` (incl. recovery path), POST `/admin/logout`, GET `/admin`
+  (placeholder dashboard: name + logout), enrolment GET/POST
+  `/admin/totp/setup` (+ POST `/admin/totp/recovery-codes/regenerate`, gated
+  on a current TOTP code). `SecurityHeadersMiddleware` (X-Frame-Options DENY,
+  X-Content-Type-Options nosniff, Referrer-Policy no-referrer, Cache-Control
+  no-store) wraps the whole group; `AuthMiddleware` protects all but
+  login/totp.
+- Wiring: `AppFactory::create` gains a 7th optional arg `?SessionInterface`
+  (defaults to NativeSession; tests inject FakeSession) and registers the auth
+  stack in the container, then calls `AdminRoutes::register`.
+- CLI: `bin/osf admin:create --email= --name=` prompts for the password
+  interactively (hidden via `stty` on a TTY, visible fallback with a warning),
+  refuses < 12 chars, prints nothing sensitive.
 
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene (+ reserved `_osf_token/_osf_hp/_osf_cf`) →
@@ -111,35 +128,30 @@ always persisted) → delivery (terminal, always succeeds). Locked by
 SubmitPipelineOrderTest.
 
 ## What exists now
-Increments 0–2 unchanged (see HISTORY). Increment 3 added `src/Mail/*`
-(MessageBuilder, BuiltMessage, MailerInterface, PhpMailerMailer,
-DeliveryService), `Submit/Stages/DeliveryStage`, migration 005, the Config
-mail keys + fromValues, SubmissionRepository mail-state methods
-(markSent/markFailed/markDead/findDueForRetry/listSummaries), the three
-`bin/osf` commands, and phpmailer/phpmailer ^6 (the only new dependency).
-The fix/mail-content-lifecycle sprint changed the meaning of
-`store_content` (see Decisions locked), added
-`SubmissionRepository::clearContent()`, and added `Config::mailEnabled()` /
-`MAIL_ENABLED`. This sprint (Increment 4) added `src/Turnstile/*`
-(TurnstileResult enum, TurnstileVerifierInterface, CurlTurnstileVerifier),
-`Submit/Stages/TurnstileStage`, migration 006, `FormRepository::setTurnstile()`
-+ hydrated turnstile columns, the token-endpoint sitekey exposure, the
-`_osf_cf` reserved field, verifier injection through AppFactory/SubmitPipeline,
-and `bin/osf form:turnstile`. No new dependencies (uses PHP's curl extension).
+Increments 0–4 as described above and in HISTORY (public v1 API + abuse
+pipeline, SMTP relay with retry, per-form Turnstile). Only new hard
+dependency to date is phpmailer/phpmailer ^6 (Increment 3). This sprint
+(Increment 5a) added `src/Auth/*`, `src/Admin/*`, `templates/admin/*`,
+migration 007, the `SessionInterface` seam + `FakeSession`/
+`CountingPasswordHasher` test doubles, `bin/osf admin:create`, and the
+AppFactory session arg + container wiring. No new dependencies.
 
 ## Known gaps / not built (by design this sprint)
-- Disposable-domain blocklist, admin UI, installer, embed snippet/JS
-  (including the Turnstile WIDGET rendering — increment 7), trusted-proxy IP
-  handling — all future increments.
+- Admin CRUD for forms/submissions, any CSS/design system (5b), password
+  reset by email, remember-me, multi-admin management UI, installer
+  integration — all deferred (out of scope for 5a).
+- Disposable-domain blocklist, installer, embed snippet/JS (incl. the
+  Turnstile WIDGET rendering — increment 7), trusted-proxy IP handling.
 - No repository method to toggle store_content/retention yet (admin UI).
 - DKIM/SPF guidance deferred to the installer increment.
 - CurlTurnstileVerifier's real curl call is not unit-tested (would hit the
   network); the interface, fake and pipeline behaviour are fully covered.
+- NativeSession's real $_SESSION/cookie path is not unit-tested (globals);
+  the whole admin flow is covered through FakeSession instead.
 
 ## Open items
-- QUESTIONS.md: both Increment-3 items RESOLVED (2026-08-24); no new
-  questions this sprint.
-- Increment 5 (Admin panel + auth) next.
+- QUESTIONS.md: all prior items RESOLVED; no new questions this sprint.
+- Increment 5b (admin styling / design system) next.
 
 ## Planned increment sequence (subject to revision)
 0. Composer/Slim skeleton, PHPUnit harness, SQLite storage. — DONE
@@ -147,7 +159,8 @@ and `bin/osf form:turnstile`. No new dependencies (uses PHP's curl extension).
 2. Submission endpoint + validation/abuse middleware stack. — DONE
 3. SMTP relay (PHPMailer) with retry. — DONE
 4. Turnstile integration. — DONE
-5. Admin panel + auth (argon2id, TOTP, CSRF).
+5a. Admin auth stack (argon2id, TOTP, sessions, CSRF). — DONE
+5b. Admin design system + form/submission CRUD screens.
 6. Browser installer + environment autodetection.
 7. Embed snippet + JS.
 8. Synthetic monitoring + alerting.
