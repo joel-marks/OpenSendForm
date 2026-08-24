@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+use OpenSendForm\Auth\AdminRepository;
+use OpenSendForm\Auth\PasswordHasher;
+use OpenSendForm\Auth\RecoveryCodes;
 use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
@@ -47,6 +50,8 @@ try {
             exit(cmdFormSetActive($db, $args, false));
         case 'form:turnstile':
             exit(cmdFormTurnstile($db, $args));
+        case 'admin:create':
+            exit(cmdAdminCreate($db, $args));
         case 'mail:retry':
             exit(cmdMailRetry($db, $config));
         case 'mail:test':
@@ -216,6 +221,104 @@ function cmdFormTurnstile(Database $db, array $args): int
 }
 
 /**
+ * admin:create --email= --name=
+ *
+ * Creates an administrator, prompting for the password interactively so it
+ * never lands in shell history or argv. Input is hidden via `stty` when a TTY
+ * is available; otherwise it falls back to visible input with a warning.
+ * Refuses passwords shorter than 12 characters. Prints nothing sensitive.
+ */
+function cmdAdminCreate(Database $db, array $args): int
+{
+    $email = null;
+    $name = null;
+
+    foreach ($args as $arg) {
+        if (str_starts_with($arg, '--email=')) {
+            $email = substr($arg, strlen('--email='));
+        } elseif (str_starts_with($arg, '--name=')) {
+            $name = substr($arg, strlen('--name='));
+        } else {
+            fwrite(STDERR, "Unknown option: {$arg}\n\n" . usage());
+            return 1;
+        }
+    }
+
+    if ($email === null || $name === null) {
+        fwrite(STDERR, "admin:create requires --email and --name\n\n" . usage());
+        return 1;
+    }
+
+    $email = trim($email);
+    if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        fwrite(STDERR, "admin:create requires a valid --email\n");
+        return 1;
+    }
+    if (trim($name) === '') {
+        fwrite(STDERR, "admin:create requires a non-empty --name\n");
+        return 1;
+    }
+
+    $hasher = new PasswordHasher();
+    $repo = new AdminRepository($db, $hasher, new RecoveryCodes($hasher));
+
+    if ($repo->findByEmail($email) !== null) {
+        fwrite(STDERR, "An admin with that email already exists.\n");
+        return 1;
+    }
+
+    $password = promptHidden('Password (min 12 characters): ');
+    $confirm = promptHidden('Confirm password: ');
+
+    if ($password !== $confirm) {
+        fwrite(STDERR, "Passwords do not match.\n");
+        return 1;
+    }
+    if (strlen($password) < 12) {
+        fwrite(STDERR, "Password too weak: must be at least 12 characters.\n");
+        return 1;
+    }
+
+    $admin = $repo->createAdmin($email, $name, $password);
+
+    fwrite(STDOUT, "Created admin #{$admin['id']} <{$admin['email']}> ({$admin['display_name']}).\n");
+    fwrite(STDOUT, "Sign in at /admin/login\n");
+
+    return 0;
+}
+
+/**
+ * Prompt for a secret on STDIN, hiding the typed characters when a TTY and
+ * `stty` are both available. Falls back to visible input with a warning so
+ * the command still works in a non-interactive or minimal environment.
+ */
+function promptHidden(string $label): string
+{
+    $sttyAvailable = function_exists('shell_exec')
+        && defined('STDIN')
+        && stream_isatty(STDIN)
+        && trim((string) @shell_exec('command -v stty 2>/dev/null')) !== '';
+
+    if (!$sttyAvailable) {
+        fwrite(STDOUT, $label . '(WARNING: input will be visible) ');
+        $value = fgets(STDIN);
+
+        return rtrim($value === false ? '' : $value, "\r\n");
+    }
+
+    fwrite(STDOUT, $label);
+    $previous = trim((string) shell_exec('stty -g'));
+    shell_exec('stty -echo');
+    $value = fgets(STDIN);
+    // Restore the original terminal settings, then echo the newline the
+    // hidden Enter keystroke swallowed.
+    shell_exec('stty ' . ($previous !== '' ? escapeshellarg($previous) : 'echo'));
+    fwrite(STDOUT, "\n");
+
+    return rtrim($value === false ? '' : $value, "\r\n");
+}
+
+/**
  * mail:retry — re-attempt every failed submission whose retry is due.
  *
  * Intended for a cPanel cron entry. Prints a one-line summary and always
@@ -343,6 +446,7 @@ function usage(): string
       bin/osf form:disable ID
       bin/osf form:turnstile ID --sitekey=KEY --secret=SECRET
       bin/osf form:turnstile ID --disable
+      bin/osf admin:create --email=EMAIL --name=NAME
       bin/osf mail:retry
       bin/osf mail:test --to=ADDRESS
       bin/osf submissions:list [--status=STATUS]
@@ -352,6 +456,8 @@ function usage(): string
       An origin is scheme+host+optional port, e.g. https://example.com
       form:turnstile enables per-form Cloudflare Turnstile (both keys
         required) or --disable clears both; the secret is never exposed.
+      admin:create prompts for the password interactively (hidden when a
+        TTY is available); it must be at least 12 characters.
       mail:retry re-sends failed submissions whose backoff has elapsed
         (intended for a cPanel cron entry); it always exits 0.
       submissions:list shows metadata only — never submitted content.
