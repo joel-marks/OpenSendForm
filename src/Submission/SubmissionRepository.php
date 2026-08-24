@@ -9,9 +9,15 @@ use OpenSendForm\Storage\Database;
 /**
  * Data-access layer for submissions.
  *
- * Metadata is always stored; message content is persisted only when the
- * owning form's store_content toggle is enabled. All access goes through
- * prepared statements on the Database wrapper.
+ * Metadata is always stored. Message content is always persisted at record
+ * time too — it is the in-flight delivery payload, needed regardless of the
+ * owning form's store_content toggle so a failed send can be retried. On
+ * successful delivery, DeliveryService clears the content column unless
+ * store_content is on: the toggle means "retain content after successful
+ * delivery", not "store content at all". Failed/dead submissions keep their
+ * content until the normal retention purge, so operators can recover
+ * undelivered mail. All access goes through prepared statements on the
+ * Database wrapper.
  */
 final class SubmissionRepository
 {
@@ -25,9 +31,9 @@ final class SubmissionRepository
     /**
      * Record a submission for a form.
      *
-     * The content column is written only when the owning form has
-     * store_content enabled; otherwise it is stored as NULL regardless of
-     * what the caller supplies.
+     * Content is always persisted as the in-flight delivery payload,
+     * regardless of the owning form's store_content toggle — see the class
+     * docblock for the full lifecycle.
      *
      * @return int The new submission id.
      */
@@ -39,8 +45,6 @@ final class SubmissionRepository
         ?string $contentJson = null,
         string $status = 'received'
     ): int {
-        $content = $this->formStoresContent($formId) ? $contentJson : null;
-
         $this->db->execute(
             'INSERT INTO submissions
                 (form_id, created_at, remote_ip, origin, user_agent, status, content)
@@ -53,7 +57,7 @@ final class SubmissionRepository
                 'origin'     => $origin,
                 'user_agent' => $userAgent,
                 'status'     => $status,
-                'content'    => $content,
+                'content'    => $contentJson,
             ]
         );
 
@@ -100,6 +104,19 @@ final class SubmissionRepository
     {
         return $this->db->fetchOne(
             'SELECT * FROM submissions WHERE id = :id',
+            ['id' => $id]
+        );
+    }
+
+    /**
+     * Null the content column. Called on successful delivery when the
+     * owning form's store_content is off, so the toggle governs retention
+     * after a successful send rather than storage of the in-flight payload.
+     */
+    public function clearContent(int $id): void
+    {
+        $this->db->execute(
+            'UPDATE submissions SET content = NULL WHERE id = :id',
             ['id' => $id]
         );
     }
@@ -222,19 +239,6 @@ final class SubmissionRepository
         $sql .= ' ORDER BY s.id DESC LIMIT ' . max(1, $limit);
 
         return $this->db->fetchAll($sql, $params);
-    }
-
-    /**
-     * Whether the owning form persists message content.
-     */
-    private function formStoresContent(int $formId): bool
-    {
-        $row = $this->db->fetchOne(
-            'SELECT store_content FROM forms WHERE id = :id',
-            ['id' => $formId]
-        );
-
-        return $row !== null && (int) $row['store_content'] === 1;
     }
 
     /**

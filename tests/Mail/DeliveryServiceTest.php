@@ -177,6 +177,60 @@ final class DeliveryServiceTest extends TestCase
         self::assertSame(0, $this->mailer->callCount());
     }
 
+    public function testSentWithStoreContentOffNullsContent(): void
+    {
+        $this->setStoreContent(false);
+        $id = $this->storeSubmission(['name' => 'Ada']);
+
+        self::assertSame(DeliveryService::RESULT_SENT, $this->service()->attemptDelivery($id));
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('sent', $row['status']);
+        self::assertNull($row['content']);
+    }
+
+    public function testSentWithStoreContentOnRetainsContent(): void
+    {
+        $this->setStoreContent(true);
+        $id = $this->storeSubmission(['name' => 'Ada']);
+
+        self::assertSame(DeliveryService::RESULT_SENT, $this->service()->attemptDelivery($id));
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('sent', $row['status']);
+        self::assertSame('{"name":"Ada"}', $row['content']);
+    }
+
+    public function testFailedSubmissionRetainsContentForRetry(): void
+    {
+        $this->setStoreContent(false);
+        $this->mailer->alwaysFail('smtp down');
+        $id = $this->storeSubmission(['name' => 'Ada']);
+
+        self::assertSame(DeliveryService::RESULT_FAILED, $this->service()->attemptDelivery($id));
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('failed', $row['status']);
+        self::assertSame('{"name":"Ada"}', $row['content']);
+    }
+
+    public function testDeadSubmissionRetainsContent(): void
+    {
+        $this->setStoreContent(false);
+        $this->mailer->alwaysFail('smtp down');
+        $config = Config::fromEnvironment([
+            'MAIL_MAX_ATTEMPTS'          => '1',
+            'MAIL_RETRY_BACKOFF_MINUTES' => '1',
+        ]);
+        $id = $this->storeSubmission(['name' => 'Ada']);
+
+        self::assertSame(DeliveryService::RESULT_DEAD, $this->service($config)->attemptDelivery($id));
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('dead', $row['status']);
+        self::assertSame('{"name":"Ada"}', $row['content']);
+    }
+
     // --- Helpers ----------------------------------------------------------
 
     private function service(?Config $config = null): DeliveryService
@@ -193,6 +247,14 @@ final class DeliveryServiceTest extends TestCase
             $this->mailer,
             $config,
             $this->clock
+        );
+    }
+
+    private function setStoreContent(bool $on): void
+    {
+        $this->db->execute(
+            'UPDATE forms SET store_content = :value WHERE id = :id',
+            ['value' => $on ? 1 : 0, 'id' => $this->form['id']]
         );
     }
 

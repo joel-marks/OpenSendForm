@@ -118,6 +118,29 @@ final class MailDeliveryPipelineTest extends TestCase
         self::assertSame('received', $this->lastSubmission()['status']);
     }
 
+    public function testMailDisabledLeavesSubmissionReceivedEvenWithSmtpConfigured(): void
+    {
+        // MAIL_ENABLED is the primary switch: even with a transport supplied
+        // and SMTP_HOST configured, delivery must not be attempted.
+        $mailer = new FakeMailer();
+        $config = Config::fromValues([
+            'APP_ENV'      => 'testing',
+            'APP_SECRET'   => self::SECRET,
+            'MAIL_ENABLED' => '0',
+            'SMTP_HOST'    => 'mailpit',
+        ]);
+
+        $response = $this->submit($mailer, $config);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(['ok' => true], $this->json($response));
+
+        $row = $this->lastSubmission();
+        self::assertSame('received', $row['status']);
+        self::assertSame(0, (int) $row['attempts']);
+        self::assertSame(0, $mailer->callCount());
+    }
+
     // --- Harness ----------------------------------------------------------
 
     private function submit(?MailerInterface $mailer, ?Config $config = null): ResponseInterface

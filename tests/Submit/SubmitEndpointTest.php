@@ -86,7 +86,7 @@ final class SubmitEndpointTest extends TestCase
         self::assertSame(1, $this->submissionCount());
     }
 
-    public function testStoreContentOffKeepsMetadataOnly(): void
+    public function testContentIsAlwaysStoredAtSubmitTimeRegardlessOfStoreContentToggle(): void
     {
         $token = $this->freshToken();
         $this->clock->advance(3);
@@ -96,8 +96,10 @@ final class SubmitEndpointTest extends TestCase
             'message'                  => 'secret content',
         ]));
 
-        // Default store_content = 0: content column stays null.
-        self::assertNull($this->lastSubmission()['content']);
+        // store_content = 0 (default) only governs retention after a
+        // successful delivery; content is always the in-flight payload.
+        $decoded = json_decode((string) $this->lastSubmission()['content'], true);
+        self::assertSame(['message' => 'secret content'], $decoded);
     }
 
     public function testStoreContentOnPersistsUserFieldsAsJson(): void
