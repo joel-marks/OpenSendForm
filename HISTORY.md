@@ -89,3 +89,62 @@
 - Deviations from prompt: none. No new Composer deps. Existing routes
   untouched, no HTTP endpoints added. QUESTIONS.md unchanged (no
   blockers).
+## 2026-08-23 — Increment 2: submission endpoint + validation/abuse stack
+- Branch: feature/increment-2-submission (off latest main).
+- Config: added APP_SECRET (empty by default; dev-only fallback
+  'dev-secret-do-not-use' when APP_ENV=dev — the installer generates a
+  real secret in production) plus env-overridable caps/timers:
+  MAX_BODY_BYTES 65536, MAX_FIELDS 50, MAX_FIELD_NAME_BYTES 100,
+  MAX_FIELD_VALUE_BYTES 10240, MIN_SUBMIT_SECONDS 3,
+  TOKEN_MAX_AGE_SECONDS 3600, RATE_IP_PER_MINUTE 5, RATE_FORM_PER_HOUR 60.
+  Typed accessors added for each.
+- Migration 004 (`rate_counters`): bucket TEXT, window_start INTEGER,
+  count INTEGER DEFAULT 0, PRIMARY KEY (bucket, window_start). Portable.
+- `src/Clock/Clock.php` (+ SystemClock): injectable unix-seconds clock,
+  shared by the rate limiter and submit token so tests control time.
+- `src/RateLimit/RateLimiter.php`: fixed-window increment-and-check
+  (`hit(bucket, limit, windowSeconds)`); read-then-write increment kept
+  portable across sqlite/mysql (no dialect UPSERT); prunes the bucket's
+  stale windows opportunistically (scoped per-bucket so mixed window
+  widths don't evict each other).
+- `src/Security/SubmitToken.php`: issue() → '<ts>.<hmac_sha256(ts.form_key,
+  APP_SECRET)>'; verify() → VALID/TOO_YOUNG/EXPIRED/INVALID. Signature
+  checked (hash_equals, constant-time) before age, so a forgery is always
+  INVALID. Injectable clock.
+- `src/Validation/DnsChecker.php` interface + SystemDnsChecker (checkdnsrr
+  MX, then A) + tests/Support/FakeDnsChecker (never hits the network).
+- `src/Http/OriginMatcher.php`: normalise/resolve/match — Origin header,
+  falling back to the Referer's origin, compared against the form's
+  normalised allowlist. `src/Http/ApiResponse.php`: the frozen JSON
+  success/error contract + CORS header helper.
+- Pipeline: each stage a small class implementing `Submit\Stage`, wired in
+  fixed order by `Submit\SubmitPipeline::create()` — MethodBody →
+  FieldHygiene → FormLookup → Origin → RateLimit → Honeypot → Token →
+  EmailValidation → Store. Runner returns on the first stage that yields a
+  SubmitOutcome (success or error). Bot-facing checks (honeypot, missing/
+  forged/too-young token) return a silent {"ok":true} and store nothing;
+  an authentic EXPIRED token returns 400 token_expired.
+- Routes (v1): GET /v1/form/{form_key}/token (origin-checked, CORS,
+  unknown_form/origin_not_allowed); OPTIONS preflights for the token
+  endpoint (GET) and /v1/submit (POST); POST /v1/submit runs the pipeline.
+  /v1/submit is mapped for non-POST verbs too so a wrong method returns
+  the contract's 405 method_not_allowed body rather than Slim's default.
+- AppFactory now wires Database, Clock, DnsChecker, the repositories,
+  RateLimiter, SubmitToken and the SubmitPipeline into the container;
+  create() takes optional Database/DnsChecker/Clock so tests inject an
+  in-memory DB, fake DNS and a fixed clock.
+- Tests added (86 total): Config defaults/overrides + APP_SECRET dev
+  fallback; SubmitToken all four verdicts incl. wrong-key/wrong-secret/
+  malformed; RateLimiter fill/reset/independent-buckets/mixed-widths/
+  prune; OriginMatcher; pipeline stage-order lock; and full endpoint
+  coverage through the app factory — happy path stores + returns ok, JSON
+  body, store_content on/off, honeypot/missing/forged/too-young token all
+  silent-success-and-store-nothing, expired → token_expired, every honest
+  rejection code with its status, per-IP and per-form rate limits with
+  clock roll-over, and the order proof (bad origin + filled honeypot →
+  origin_not_allowed). Existing migration tests updated to versions
+  [1, 2, 3, 4] and a rate_counters existence assertion added.
+- Test results: **OK — 86 tests, 1222 assertions, all green.**
+- Deviations from prompt: none functional; no new Composer deps.
+  Clarification logged to QUESTIONS.md re: the /v1/submit CORS *preflight*,
+  where the form key is not yet known — see that file.

@@ -42,5 +42,52 @@ Dev email is captured by **Mailpit** — open its web UI at
 `http://localhost:8025`. No real SMTP server is configured in this
 environment.
 
+## Public API (v1)
+
+The public API is JSON-only and CORS-aware. All responses share one shape:
+
+```jsonc
+// success
+{ "ok": true }
+// failure
+{ "ok": false, "error": { "code": "snake_case_code", "message": "..." } }
+```
+
+Error `code` values are stable and machine-readable; `message` is for
+humans and may change. HTTP status is `200` on success, and `400` / `403`
+/ `405` / `413` / `429` for the various failures.
+
+### `GET /v1/form/{form_key}/token`
+Issues a short-lived submit token for a form. The request's `Origin` must
+be in the form's allowlist. Returns `{"ok":true,"token":"<ts>.<hmac>"}`.
+Failures: `unknown_form` (unknown/inactive key), `origin_not_allowed`.
+The embed JS calls this before rendering a form and refreshes it on
+`token_expired`.
+
+### `POST /v1/submit`
+Accepts `application/x-www-form-urlencoded`, `multipart/form-data` or
+`application/json`. Reserved fields:
+
+- `_osf_key` — the public form key (required)
+- `_osf_token` — the token from the endpoint above
+- `_osf_hp` — honeypot; must be left empty
+
+Everything else is treated as user form data. If a field named `email` is
+present its syntax and mail-capable DNS record are checked.
+
+The request passes an ordered gauntlet: method/size → field hygiene →
+form lookup → origin allowlist → per-IP then per-form rate limits →
+honeypot → token → email validation → store. Abuse checks that only a
+bot would trip (filled honeypot; missing, forged or too-fast token) return
+a normal `{"ok":true}` and silently discard the submission — bots get no
+signal. A legitimate but **expired** token is the one honest timing
+failure: it returns `400 token_expired` so the client can refresh and
+retry. Other failures return specific codes: `invalid_fields`,
+`unknown_form`, `origin_not_allowed`, `rate_limited`, `payload_too_large`,
+`method_not_allowed`, `invalid_email`, `email_domain_invalid`.
+
+Submissions stop at status `received` for now; SMTP relay arrives in a
+later increment. `OPTIONS` on both routes returns a `204` CORS preflight.
+
 ## License
 MIT — see LICENSE.

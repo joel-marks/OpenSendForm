@@ -24,11 +24,13 @@ final class SchemaMigrationsTest extends TestCase
 
         self::assertContains('002_create_forms.sql', $applied);
         self::assertContains('003_create_submissions.sql', $applied);
-        self::assertSame([1, 2, 3], $runner->appliedVersions());
+        self::assertContains('004_create_rate_counters.sql', $applied);
+        self::assertSame([1, 2, 3, 4], $runner->appliedVersions());
 
-        // Both tables now exist and are queryable.
+        // All tables now exist and are queryable.
         self::assertTableExists($db, 'forms');
         self::assertTableExists($db, 'submissions');
+        self::assertTableExists($db, 'rate_counters');
     }
 
     public function testMigrationsAreIdempotent(): void
@@ -40,7 +42,7 @@ final class SchemaMigrationsTest extends TestCase
         $secondRun = $runner->migrate();
 
         self::assertSame([], $secondRun);
-        self::assertSame([1, 2, 3], $runner->appliedVersions());
+        self::assertSame([1, 2, 3, 4], $runner->appliedVersions());
     }
 
     public function testSubmissionsIndexExists(): void
