@@ -530,6 +530,31 @@ final class AdminUiTest extends TestCase
         self::assertStringContainsString('MIT', file_get_contents($assets . '/vendor/qrcode.js'));
     }
 
+    public function testEveryAdminScreenReferencesPicoCss(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $this->login();
+
+        $routes = [
+            'dashboard'     => '/admin',
+            'forms list'    => '/admin/forms',
+            'form create'   => '/admin/forms/new',
+            'form edit'     => '/admin/forms/' . $form['id'] . '/edit',
+            'submissions'   => '/admin/submissions',
+            'totp setup'    => '/admin/totp/setup',
+        ];
+
+        foreach ($routes as $label => $route) {
+            $response = $this->get($route);
+            self::assertSame(200, $response->getStatusCode(), "{$label} ({$route}) did not return 200");
+            self::assertStringContainsString(
+                '/assets/vendor/pico.min.css',
+                (string) $response->getBody(),
+                "{$label} ({$route}) is missing the shared layout's pico.min.css reference"
+            );
+        }
+    }
+
     public function testLayoutReferencesSelfHostedAssets(): void
     {
         $body = (string) $this->get('/admin/login')->getBody();
