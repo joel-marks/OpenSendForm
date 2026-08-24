@@ -21,6 +21,7 @@ use OpenSendForm\Submit\Stages\OriginStage;
 use OpenSendForm\Submit\Stages\RateLimitStage;
 use OpenSendForm\Submit\Stages\StoreStage;
 use OpenSendForm\Submit\Stages\TokenStage;
+use OpenSendForm\Submit\Stages\TurnstileStage;
 use OpenSendForm\Submit\SubmitPipeline;
 use OpenSendForm\Tests\Support\FakeDnsChecker;
 use OpenSendForm\Tests\Support\FixedClock;
@@ -63,6 +64,7 @@ final class SubmitPipelineOrderTest extends TestCase
             RateLimitStage::class,
             HoneypotStage::class,
             TokenStage::class,
+            TurnstileStage::class,
             EmailValidationStage::class,
             StoreStage::class,
             DeliveryStage::class,
