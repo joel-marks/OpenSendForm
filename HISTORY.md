@@ -185,3 +185,20 @@
   list. QUESTIONS.md item resolved (decision recorded above); CONTEXT.md
   updated.
 - Deviations from prompt: none; no new Composer deps.
+
+## 2026-08-24 — Housekeeping: GitHub Actions CI
+- Branch: chore/ci-workflow (off latest main).
+- Added `.github/workflows/ci.yml`: job `tests` on ubuntu-latest, 2-entry
+  matrix (PHP 8.1, PHP 8.2), `fail-fast: false` so both legs report
+  independently. Triggers on `pull_request` and `push` to `main`. Steps:
+  checkout, `shivammathur/setup-php@v2` (extensions: pdo_sqlite; coverage:
+  none; XDEBUG_MODE=off), Composer package cache keyed on
+  `hashFiles('composer.lock')`, `composer install --no-interaction
+  --prefer-dist`, then `composer test`.
+- README: added the CI status badge under the title, linking to the
+  workflow's Actions page.
+- No application code or test files touched, as instructed. No new
+  Composer dependencies.
+- Test results (local): **OK — 88 tests, 1226 assertions, all green.**
+  CI itself will be exercised for real once this branch's PR is opened.
+- Deviations from prompt: none. QUESTIONS.md unchanged (no blockers).
