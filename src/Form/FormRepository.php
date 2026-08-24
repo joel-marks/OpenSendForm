@@ -143,6 +143,54 @@ final class FormRepository
     }
 
     /**
+     * Enable or disable per-form Cloudflare Turnstile.
+     *
+     * Both-or-neither: pass a sitekey AND a secret to enable, or null for
+     * both (equivalently `--disable`) to clear them. Empty strings are
+     * treated as null. Supplying exactly one is rejected — a half-configured
+     * form would either never verify or expose a widget with no backing
+     * secret.
+     *
+     * @return bool True if a row was updated.
+     *
+     * @throws InvalidArgumentException if exactly one of sitekey/secret is set.
+     */
+    public function setTurnstile(int $id, ?string $sitekey, ?string $secret): bool
+    {
+        $sitekey = $sitekey === null ? null : trim($sitekey);
+        $secret = $secret === null ? null : trim($secret);
+
+        if ($sitekey === '') {
+            $sitekey = null;
+        }
+        if ($secret === '') {
+            $secret = null;
+        }
+
+        if (($sitekey === null) !== ($secret === null)) {
+            throw new InvalidArgumentException(
+                'Turnstile requires both a sitekey and a secret, or neither.'
+            );
+        }
+
+        $statement = $this->db->execute(
+            'UPDATE forms
+                SET turnstile_sitekey = :sitekey,
+                    turnstile_secret = :secret,
+                    updated_at = :now
+              WHERE id = :id',
+            [
+                'sitekey' => $sitekey,
+                'secret'  => $secret,
+                'now'     => self::now(),
+                'id'      => $id,
+            ]
+        );
+
+        return $statement->rowCount() > 0;
+    }
+
+    /**
      * Normalise and validate a list of origins.
      *
      * Each origin is reduced to scheme + host + optional port, with no
@@ -235,6 +283,10 @@ final class FormRepository
             'store_content'   => (int) $row['store_content'],
             'retention_days'  => (int) $row['retention_days'],
             'is_active'       => (int) $row['is_active'],
+            'turnstile_sitekey' => isset($row['turnstile_sitekey']) && $row['turnstile_sitekey'] !== null
+                ? (string) $row['turnstile_sitekey'] : null,
+            'turnstile_secret'  => isset($row['turnstile_secret']) && $row['turnstile_secret'] !== null
+                ? (string) $row['turnstile_secret'] : null,
             'created_at'      => (string) $row['created_at'],
             'updated_at'      => (string) $row['updated_at'],
         ];

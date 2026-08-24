@@ -119,8 +119,19 @@ final class Routes
 
         $token = $tokens->issue($form['form_key']);
 
+        $extra = ['token' => $token];
+
+        // Advertise the public sitekey when (and only when) this form has
+        // Turnstile enabled, so the embed JS can render the widget. The
+        // secret is never included in any response.
+        $sitekey = (string) ($form['turnstile_sitekey'] ?? '');
+        $secret = (string) ($form['turnstile_secret'] ?? '');
+        if ($sitekey !== '' && $secret !== '') {
+            $extra['turnstile'] = ['sitekey' => $sitekey];
+        }
+
         return ApiResponse::withCors(
-            ApiResponse::success($response, ['token' => $token]),
+            ApiResponse::success($response, $extra),
             $matched
         );
     }

@@ -20,6 +20,9 @@ use OpenSendForm\Submit\Stages\OriginStage;
 use OpenSendForm\Submit\Stages\RateLimitStage;
 use OpenSendForm\Submit\Stages\StoreStage;
 use OpenSendForm\Submit\Stages\TokenStage;
+use OpenSendForm\Submit\Stages\TurnstileStage;
+use OpenSendForm\Turnstile\CurlTurnstileVerifier;
+use OpenSendForm\Turnstile\TurnstileVerifierInterface;
 use OpenSendForm\Validation\DnsChecker;
 
 /**
@@ -52,8 +55,11 @@ final class SubmitPipeline
         SubmitToken $tokens,
         DnsChecker $dns,
         SubmissionRepository $submissions,
-        ?DeliveryService $delivery = null
+        ?DeliveryService $delivery = null,
+        ?TurnstileVerifierInterface $turnstile = null
     ): self {
+        $turnstile ??= new CurlTurnstileVerifier();
+
         return new self([
             new MethodBodyStage($config),        // a. method + body size + parse
             new FieldHygieneStage($config),      // b. field count/size + reserved split
@@ -62,6 +68,7 @@ final class SubmitPipeline
             new RateLimitStage($limiter, $config), // e. per-IP then per-form
             new HoneypotStage(),                 // f. honeypot -> silent success
             new TokenStage($tokens),             // g. submit-token
+            new TurnstileStage($turnstile),      // g'. optional per-form Turnstile
             new EmailValidationStage($dns),      // h. email syntax + MX/A
             new StoreStage($submissions),        // i. persist (non-terminal)
             new DeliveryStage($delivery, $config), // j. mail relay -> success

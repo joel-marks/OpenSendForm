@@ -17,6 +17,7 @@ final class SubmitContext
     /** Reserved field names carried alongside the user's form data. */
     public const FIELD_TOKEN = '_osf_token';
     public const FIELD_HONEYPOT = '_osf_hp';
+    public const FIELD_TURNSTILE = '_osf_cf';
 
     public ServerRequestInterface $request;
 
@@ -48,6 +49,9 @@ final class SubmitContext
 
     public ?string $token = null;
     public ?string $honeypot = null;
+
+    /** The Turnstile client token (reserved field _osf_cf), if supplied. */
+    public ?string $turnstileToken = null;
 
     /**
      * The looked-up, active form (set by the form-lookup stage).
