@@ -5,6 +5,16 @@ declare(strict_types=1);
 namespace OpenSendForm;
 
 use DI\Container;
+use OpenSendForm\Admin\AdminRoutes;
+use OpenSendForm\Admin\TemplateRenderer;
+use OpenSendForm\Auth\AdminRepository;
+use OpenSendForm\Auth\AuthService;
+use OpenSendForm\Auth\Csrf;
+use OpenSendForm\Auth\NativeSession;
+use OpenSendForm\Auth\PasswordHasher;
+use OpenSendForm\Auth\RecoveryCodes;
+use OpenSendForm\Auth\SessionInterface;
+use OpenSendForm\Auth\Totp;
 use OpenSendForm\Clock\Clock;
 use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Form\FormRepository;
@@ -52,6 +62,9 @@ final class AppFactory
      * @param TurnstileVerifierInterface|null $turnstile Optional Turnstile
      *                                verifier; defaults to the real curl-backed
      *                                implementation. Tests inject a fake.
+     * @param SessionInterface|null $session Optional session store; defaults to
+     *                                the native PHP session. Tests inject an
+     *                                array-backed fake to drive the admin flow.
      */
     public static function create(
         ?Config $config = null,
@@ -59,15 +72,17 @@ final class AppFactory
         ?DnsChecker $dns = null,
         ?Clock $clock = null,
         ?MailerInterface $mailer = null,
-        ?TurnstileVerifierInterface $turnstile = null
+        ?TurnstileVerifierInterface $turnstile = null,
+        ?SessionInterface $session = null
     ): App {
         $config ??= Config::fromEnvironment();
         $db ??= Database::connect($config->dbDsn());
         $dns ??= new SystemDnsChecker();
         $clock ??= new SystemClock();
         $turnstile ??= new CurlTurnstileVerifier();
+        $session ??= new NativeSession();
 
-        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile);
+        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile, $session);
 
         SlimAppFactory::setContainer($container);
         $app = SlimAppFactory::create();
@@ -78,6 +93,7 @@ final class AppFactory
         $app->addErrorMiddleware($displayErrorDetails, true, true);
 
         Routes::register($app);
+        AdminRoutes::register($app);
 
         return $app;
     }
@@ -88,7 +104,8 @@ final class AppFactory
         DnsChecker $dns,
         Clock $clock,
         ?MailerInterface $mailer,
-        TurnstileVerifierInterface $turnstile
+        TurnstileVerifierInterface $turnstile,
+        SessionInterface $session
     ): Container {
         $container = new Container();
 
@@ -129,6 +146,27 @@ final class AppFactory
         $container->set(
             SubmitPipeline::class,
             SubmitPipeline::create($config, $forms, $limiter, $tokens, $dns, $submissions, $delivery, $turnstile)
+        );
+
+        // Admin authentication stack.
+        $hasher = new PasswordHasher();
+        $totp = new Totp();
+        $recovery = new RecoveryCodes($hasher);
+        $adminRepo = new AdminRepository($db, $hasher, $recovery);
+
+        $container->set(SessionInterface::class, $session);
+        $container->set(PasswordHasher::class, $hasher);
+        $container->set(Totp::class, $totp);
+        $container->set(RecoveryCodes::class, $recovery);
+        $container->set(AdminRepository::class, $adminRepo);
+        $container->set(Csrf::class, new Csrf($session));
+        $container->set(
+            AuthService::class,
+            new AuthService($adminRepo, $hasher, $totp, $session, $limiter, $clock)
+        );
+        $container->set(
+            TemplateRenderer::class,
+            new TemplateRenderer(dirname(__DIR__) . '/templates/admin')
         );
 
         return $container;
