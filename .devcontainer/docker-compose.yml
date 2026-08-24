@@ -10,6 +10,9 @@ services:
       APP_ENV: dev
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
+      # Silence Xdebug "connect" warnings from bin/osf CLI runs (no debugger
+      # listener in this container). Takes effect on the next container rebuild.
+      XDEBUG_MODE: "off"
     depends_on:
       - mailpit
 
