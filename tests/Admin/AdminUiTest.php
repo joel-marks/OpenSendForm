@@ -1,0 +1,650 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OpenSendForm\Tests\Admin;
+
+use OpenSendForm\AppFactory;
+use OpenSendForm\Auth\AdminRepository;
+use OpenSendForm\Auth\PasswordHasher;
+use OpenSendForm\Auth\RecoveryCodes;
+use OpenSendForm\Config;
+use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Storage\Database;
+use OpenSendForm\Storage\MigrationRunner;
+use OpenSendForm\Submission\SubmissionRepository;
+use OpenSendForm\Tests\Support\FakeMailer;
+use OpenSendForm\Tests\Support\FakeSession;
+use OpenSendForm\Tests\Support\FixedClock;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Slim\App;
+use Slim\Psr7\Factory\ServerRequestFactory;
+
+/**
+ * HTTP-level coverage for the increment 5b admin screens (dashboard, forms
+ * CRUD, submissions, retry) plus the design-system contract (CSP, self-hosted
+ * assets, no inline handlers). Driven through the app factory against an
+ * in-memory database with an array-backed session, a fixed clock and a
+ * scriptable fake mailer — no native session, wall-clock or network.
+ */
+final class AdminUiTest extends TestCase
+{
+    private const PASSWORD = 'correct-horse-battery-staple';
+    /** 2023-11-14 22:13:20 UTC. */
+    private const T0 = 1_700_000_000;
+    private const TODAY = '2023-11-14';
+
+    private Database $db;
+    private FakeSession $session;
+    private FixedClock $clock;
+    private FakeMailer $mailer;
+    private App $app;
+    private AdminRepository $admins;
+    private FormRepository $forms;
+    private SubmissionRepository $submissions;
+
+    protected function setUp(): void
+    {
+        $this->db = Database::connect('sqlite::memory:');
+        (new MigrationRunner($this->db, dirname(__DIR__, 2) . '/migrations'))->migrate();
+
+        $this->session = new FakeSession();
+        $this->clock = new FixedClock(self::T0);
+        $this->mailer = new FakeMailer();
+
+        $hasher = new PasswordHasher(PASSWORD_BCRYPT);
+        $this->admins = new AdminRepository($this->db, $hasher, new RecoveryCodes($hasher));
+        $this->forms = new FormRepository($this->db);
+        $this->submissions = new SubmissionRepository($this->db);
+
+        $config = Config::fromValues(['APP_ENV' => 'dev', 'APP_SECRET' => 'admin-ui-secret']);
+        $this->app = AppFactory::create(
+            $config,
+            $this->db,
+            null,
+            $this->clock,
+            $this->mailer,
+            null,
+            $this->session
+        );
+    }
+
+    // --- Dashboard --------------------------------------------------------
+
+    public function testDashboardShowsCounts(): void
+    {
+        $this->forms->createForm('Alpha', 'a@example.com', ['https://a.com']);            // active
+        $this->forms->createForm('Beta', 'b@example.com', ['https://b.com']);             // active
+        $this->forms->createForm('Gamma', 'g@example.com', ['https://g.com'], false, 30, false); // disabled
+
+        $form = $this->forms->createForm('Contact', 'c@example.com', ['https://c.com']);
+        $id = (int) $form['id'];
+        // Three "today" (>= 2023-11-14): 1 sent, 1 failed, 1 dead.
+        $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'sent');
+        $this->insertSubmission($id, self::TODAY . ' 09:00:00', 'failed', 1, 'smtp boom');
+        $this->insertSubmission($id, self::TODAY . ' 10:00:00', 'dead', 5, 'gave up here');
+        // Not today, and an older failed one contributing to the failed total.
+        $this->insertSubmission($id, '2023-11-13 09:00:00', 'failed', 2, 'yesterday fail');
+        $this->insertSubmission($id, '2023-11-10 09:00:00', 'sent');
+
+        $this->login();
+        $body = (string) $this->get('/admin')->getBody();
+
+        // Active forms = 4 (Alpha, Beta, Contact active; Gamma disabled).
+        self::assertStringContainsString('<div class="osf-stat-value">3</div>', $body);
+        // Today = 3, failed total = 2, dead total = 1 all appear as stat values.
+        self::assertSame(1, substr_count($body, '<div class="osf-stat-value">2</div>'), 'failed total = 2');
+        self::assertSame(1, substr_count($body, '<div class="osf-stat-value">1</div>'), 'dead total = 1');
+
+        // Recent problem list shows failed/dead errors, links to filtered view.
+        self::assertStringContainsString('gave up here', $body);
+        self::assertStringContainsString('yesterday fail', $body);
+        self::assertStringContainsString('/admin/submissions?status=dead&amp;form=' . $id, $body);
+        // A delivered submission's status is never in the problem list body.
+    }
+
+    public function testActiveFormsCountExcludesDisabled(): void
+    {
+        $this->forms->createForm('One', 'o@example.com', ['https://o.com']);
+        $this->forms->createForm('Two', 't@example.com', ['https://t.com'], false, 30, false);
+
+        $this->login();
+        $body = (string) $this->get('/admin')->getBody();
+        // 1 active form.
+        self::assertMatchesRegularExpression(
+            '/<div class="osf-stat-value">1<\/div>\s*<div class="osf-stat-label">Active forms/',
+            $body
+        );
+    }
+
+    // --- Forms list / create / edit --------------------------------------
+
+    public function testFormsListShowsKeyRecipientAndBadges(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $this->login();
+
+        $body = (string) $this->get('/admin/forms')->getBody();
+        self::assertStringContainsString((string) $form['form_key'], $body);
+        self::assertStringContainsString('owner@example.com', $body);
+        self::assertStringContainsString('data-copy="' . $form['form_key'] . '"', $body);
+        self::assertStringContainsString('osf-badge--ok', $body); // active badge
+    }
+
+    public function testCreateFormHappyPath(): void
+    {
+        $this->login();
+        $page = $this->get('/admin/forms/new');
+        self::assertSame(200, $page->getStatusCode());
+
+        $response = $this->post('/admin/forms', [
+            '_csrf'          => $this->csrfFrom($page),
+            'name'           => 'Newsletter',
+            'recipient'      => 'news@example.com',
+            'origins'        => "https://example.com\nhttps://www.example.com",
+            'retention_days' => '45',
+            'is_active'      => '1',
+            'store_content'  => '1',
+        ]);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/admin/forms', $response->getHeaderLine('Location'));
+
+        $forms = $this->forms->listForms();
+        self::assertCount(1, $forms);
+        self::assertSame('Newsletter', $forms[0]['name']);
+        self::assertSame(['https://example.com', 'https://www.example.com'], $forms[0]['allowed_origins']);
+        self::assertSame(45, $forms[0]['retention_days']);
+        self::assertSame(1, $forms[0]['store_content']);
+    }
+
+    public function testCreateFormRejectsBadEmailAndPreservesInput(): void
+    {
+        $this->login();
+        $page = $this->get('/admin/forms/new');
+
+        $response = $this->post('/admin/forms', [
+            '_csrf'          => $this->csrfFrom($page),
+            'name'           => 'My Form',
+            'recipient'      => 'not-an-email',
+            'origins'        => 'https://example.com',
+            'retention_days' => '30',
+        ]);
+
+        self::assertSame(422, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        self::assertStringContainsString('Invalid recipient email', $body);
+        self::assertStringContainsString('value="My Form"', $body);            // name preserved
+        self::assertStringContainsString('https://example.com', $body);         // origins preserved
+        self::assertCount(0, $this->forms->listForms());                        // nothing written
+    }
+
+    public function testCreateFormRejectsBadOrigin(): void
+    {
+        $this->login();
+        $page = $this->get('/admin/forms/new');
+
+        $response = $this->post('/admin/forms', [
+            '_csrf'          => $this->csrfFrom($page),
+            'name'           => 'My Form',
+            'recipient'      => 'ok@example.com',
+            'origins'        => 'ftp://example.com/path',
+            'retention_days' => '30',
+        ]);
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertStringContainsString('Invalid origin', (string) $response->getBody());
+        self::assertCount(0, $this->forms->listForms());
+    }
+
+    public function testCreateFormRejectsTurnstileOneKeyOnly(): void
+    {
+        $this->login();
+        $page = $this->get('/admin/forms/new');
+
+        $response = $this->post('/admin/forms', [
+            '_csrf'             => $this->csrfFrom($page),
+            'name'              => 'My Form',
+            'recipient'         => 'ok@example.com',
+            'origins'           => 'https://example.com',
+            'retention_days'    => '30',
+            'turnstile_sitekey' => 'site-key-only',
+            // no secret
+        ]);
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertStringContainsString('Turnstile needs both', (string) $response->getBody());
+        self::assertCount(0, $this->forms->listForms());
+    }
+
+    public function testEditFormShowsKeyAndUpdates(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->login();
+
+        $edit = $this->get("/admin/forms/{$id}/edit");
+        self::assertSame(200, $edit->getStatusCode());
+        self::assertStringContainsString((string) $form['form_key'], (string) $edit->getBody());
+
+        $response = $this->post("/admin/forms/{$id}", [
+            '_csrf'          => $this->csrfFrom($edit),
+            'name'           => 'Contact Renamed',
+            'recipient'      => 'newowner@example.com',
+            'origins'        => 'https://example.com',
+            'retention_days' => '10',
+            'is_active'      => '1',
+        ]);
+
+        self::assertSame(302, $response->getStatusCode());
+        $reloaded = $this->forms->findById($id);
+        self::assertSame('Contact Renamed', $reloaded['name']);
+        self::assertSame('newowner@example.com', $reloaded['recipient_email']);
+        self::assertSame(10, $reloaded['retention_days']);
+    }
+
+    // --- Turnstile secret handling ---------------------------------------
+
+    public function testTurnstileSecretIsNeverEchoedBack(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->forms->setTurnstile($id, 'the-site-key', 'the-super-secret-value');
+        $this->login();
+
+        $body = (string) $this->get("/admin/forms/{$id}/edit")->getBody();
+        self::assertStringNotContainsString('the-super-secret-value', $body);
+        self::assertStringContainsString('the-site-key', $body);       // sitekey is public
+        self::assertStringContainsString('currently', $body);          // set/not-set hint
+    }
+
+    public function testBlankSecretOnEditKeepsExistingSecret(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->forms->setTurnstile($id, 'site-key', 'keep-me-secret');
+        $this->login();
+
+        $edit = $this->get("/admin/forms/{$id}/edit");
+        $this->post("/admin/forms/{$id}", [
+            '_csrf'             => $this->csrfFrom($edit),
+            'name'              => 'Contact',
+            'recipient'         => 'owner@example.com',
+            'origins'           => 'https://example.com',
+            'retention_days'    => '30',
+            'is_active'         => '1',
+            'turnstile_sitekey' => 'site-key',
+            'turnstile_secret'  => '',   // left blank → keep existing
+        ]);
+
+        self::assertSame('keep-me-secret', $this->forms->findById($id)['turnstile_secret']);
+    }
+
+    public function testClearingSitekeyDisablesTurnstile(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->forms->setTurnstile($id, 'site-key', 'a-secret');
+        $this->login();
+
+        $edit = $this->get("/admin/forms/{$id}/edit");
+        $this->post("/admin/forms/{$id}", [
+            '_csrf'             => $this->csrfFrom($edit),
+            'name'              => 'Contact',
+            'recipient'         => 'owner@example.com',
+            'origins'           => 'https://example.com',
+            'retention_days'    => '30',
+            'is_active'         => '1',
+            'turnstile_sitekey' => '',
+            'turnstile_secret'  => '',
+        ]);
+
+        $reloaded = $this->forms->findById($id);
+        self::assertNull($reloaded['turnstile_sitekey']);
+        self::assertNull($reloaded['turnstile_secret']);
+    }
+
+    // --- Enable / disable -------------------------------------------------
+
+    public function testEnableDisableForm(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->login();
+
+        $csrf = $this->csrfFrom($this->get('/admin/forms'));
+        $disable = $this->post("/admin/forms/{$id}/disable", ['_csrf' => $csrf]);
+        self::assertSame(302, $disable->getStatusCode());
+        self::assertSame(0, $this->forms->findById($id)['is_active']);
+
+        $csrf = $this->csrfFrom($this->get('/admin/forms'));
+        $enable = $this->post("/admin/forms/{$id}/enable", ['_csrf' => $csrf]);
+        self::assertSame(302, $enable->getStatusCode());
+        self::assertSame(1, $this->forms->findById($id)['is_active']);
+    }
+
+    public function testDisableRejectsBadCsrf(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        $this->login();
+
+        $this->post("/admin/forms/{$id}/disable", ['_csrf' => 'forged']);
+        self::assertSame(1, $this->forms->findById($id)['is_active'], 'form must stay active');
+    }
+
+    // --- Submissions: pagination + filters -------------------------------
+
+    public function testSubmissionsPagination(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        for ($i = 0; $i < 55; $i++) {
+            $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'sent');
+        }
+        $this->login();
+
+        $page1 = (string) $this->get('/admin/submissions')->getBody();
+        self::assertSame(50, substr_count($page1, '<tr>') - 1, 'page 1 has 50 data rows'); // minus header row
+        self::assertStringContainsString('Page 1 of 2', $page1);
+
+        $page2 = (string) $this->get('/admin/submissions', ['page' => '2'])->getBody();
+        self::assertSame(5, substr_count($page2, '<tr>') - 1, 'page 2 has 5 data rows');
+        self::assertStringContainsString('Page 2 of 2', $page2);
+    }
+
+    public function testSubmissionsFilterByStatusAndForm(): void
+    {
+        $a = (int) $this->forms->createForm('Alpha', 'a@example.com', ['https://a.com'])['id'];
+        $b = (int) $this->forms->createForm('Beta', 'b@example.com', ['https://b.com'])['id'];
+
+        $this->insertSubmission($a, self::TODAY . ' 08:00:00', 'sent');
+        $this->insertSubmission($a, self::TODAY . ' 09:00:00', 'failed', 1, 'a-failed-error');
+        $this->insertSubmission($b, self::TODAY . ' 10:00:00', 'failed', 1, 'b-failed-error');
+        $this->login();
+
+        $byStatus = (string) $this->get('/admin/submissions', ['status' => 'failed'])->getBody();
+        self::assertStringContainsString('a-failed-error', $byStatus);
+        self::assertStringContainsString('b-failed-error', $byStatus);
+        self::assertStringContainsString('2 submission(s) match', $byStatus);
+
+        $byForm = (string) $this->get('/admin/submissions', ['form' => (string) $a])->getBody();
+        self::assertStringContainsString('a-failed-error', $byForm);
+        self::assertStringNotContainsString('b-failed-error', $byForm);
+        self::assertStringContainsString('2 submission(s) match', $byForm); // Alpha has 2 rows
+
+        $both = (string) $this->get('/admin/submissions', ['status' => 'failed', 'form' => (string) $b])->getBody();
+        self::assertStringContainsString('b-failed-error', $both);
+        self::assertStringNotContainsString('a-failed-error', $both);
+        self::assertStringContainsString('1 submission(s) match', $both);
+    }
+
+    public function testSubmissionsNeverShowContent(): void
+    {
+        $id = (int) $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com'])['id'];
+        $secret = 'topsecret-message-body-xyz';
+        $this->insertSubmission(
+            $id,
+            self::TODAY . ' 08:00:00',
+            'failed',
+            1,
+            'err',
+            json_encode(['message' => $secret])
+        );
+        $this->login();
+
+        $body = (string) $this->get('/admin/submissions')->getBody();
+        self::assertStringNotContainsString($secret, $body);
+    }
+
+    // --- Retry ------------------------------------------------------------
+
+    public function testRetrySucceedsAndTransitionsToSent(): void
+    {
+        $id = (int) $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com'])['id'];
+        $sid = $this->insertSubmission(
+            $id,
+            self::TODAY . ' 08:00:00',
+            'failed',
+            1,
+            'smtp down',
+            json_encode(['email' => 'visitor@example.com'])
+        );
+        $this->login();
+
+        // Default FakeMailer succeeds.
+        $csrf = $this->csrfFrom($this->get('/admin/submissions'));
+        $response = $this->post("/admin/submissions/{$sid}/retry", [
+            '_csrf'  => $csrf,
+            'status' => 'failed',
+            'form'   => (string) $id,
+        ]);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('sent', $this->submissions->findById($sid)['status']);
+        self::assertSame(1, $this->mailer->callCount());
+    }
+
+    public function testRetryRepeatFailureStaysFailed(): void
+    {
+        $id = (int) $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com'])['id'];
+        $sid = $this->insertSubmission(
+            $id,
+            self::TODAY . ' 08:00:00',
+            'failed',
+            1,
+            'smtp down',
+            json_encode(['email' => 'visitor@example.com'])
+        );
+        $this->mailer->alwaysFail('still broken');
+        $this->login();
+
+        $csrf = $this->csrfFrom($this->get('/admin/submissions'));
+        $response = $this->post("/admin/submissions/{$sid}/retry", ['_csrf' => $csrf]);
+
+        self::assertSame(302, $response->getStatusCode());
+        $row = $this->submissions->findById($sid);
+        self::assertSame('failed', $row['status']);
+        self::assertSame(2, (int) $row['attempts'], 'attempt counter advanced');
+    }
+
+    public function testRetryRejectsNonFailedSubmission(): void
+    {
+        $id = (int) $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com'])['id'];
+        $sid = $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'sent');
+        $this->login();
+
+        $csrf = $this->csrfFrom($this->get('/admin/submissions'));
+        $this->post("/admin/submissions/{$sid}/retry", ['_csrf' => $csrf]);
+
+        self::assertSame(0, $this->mailer->callCount(), 'a sent submission is not retried');
+    }
+
+    public function testBulkRetryDue(): void
+    {
+        $id = (int) $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com'])['id'];
+        // Two due failed submissions (next_attempt_at in the past) and one sent.
+        $s1 = $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'failed', 1, 'e1', '{}', self::TODAY . ' 00:00:00');
+        $s2 = $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'failed', 1, 'e2', '{}', self::TODAY . ' 00:00:00');
+        $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'sent');
+        $this->login();
+
+        $csrf = $this->csrfFrom($this->get('/admin/submissions'));
+        $response = $this->post('/admin/submissions/retry-due', ['_csrf' => $csrf]);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('sent', $this->submissions->findById($s1)['status']);
+        self::assertSame('sent', $this->submissions->findById($s2)['status']);
+        self::assertSame(2, $this->mailer->callCount());
+    }
+
+    // --- CSP & assets -----------------------------------------------------
+
+    public function testCspPresentOnAdminResponses(): void
+    {
+        $this->login();
+        $response = $this->get('/admin');
+
+        $csp = $response->getHeaderLine('Content-Security-Policy');
+        self::assertStringContainsString("default-src 'self'", $csp);
+        self::assertStringContainsString("script-src 'self'", $csp);
+        self::assertStringContainsString("style-src 'self'", $csp);
+        self::assertStringContainsString("img-src 'self' data:", $csp);
+        self::assertStringContainsString("frame-ancestors 'none'", $csp);
+    }
+
+    public function testCspPresentOnLoginPage(): void
+    {
+        $response = $this->get('/admin/login');
+        self::assertNotSame('', $response->getHeaderLine('Content-Security-Policy'));
+    }
+
+    public function testCspAbsentOnPublicApiResponses(): void
+    {
+        $health = $this->get('/health');
+        self::assertSame('', $health->getHeaderLine('Content-Security-Policy'));
+
+        // Token endpoint (public API) likewise carries no CSP.
+        $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $token = $this->app->handle(
+            (new ServerRequestFactory())
+                ->createServerRequest('GET', '/v1/form/x/token', ['REMOTE_ADDR' => '203.0.113.5'])
+        );
+        self::assertSame('', $token->getHeaderLine('Content-Security-Policy'));
+    }
+
+    public function testVendoredAndEnhancementAssetsExist(): void
+    {
+        $assets = dirname(__DIR__, 2) . '/public/assets';
+        self::assertFileExists($assets . '/vendor/pico.min.css');
+        self::assertFileExists($assets . '/vendor/qrcode.js');
+        self::assertFileExists($assets . '/admin.css');
+        self::assertFileExists($assets . '/theme.js');
+        self::assertFileExists($assets . '/admin.js');
+
+        // Pinned version + licence provenance recorded in each vendored file.
+        self::assertStringContainsString('2.0.6', file_get_contents($assets . '/vendor/pico.min.css'));
+        self::assertStringContainsString('1.4.4', file_get_contents($assets . '/vendor/qrcode.js'));
+        self::assertStringContainsString('MIT', file_get_contents($assets . '/vendor/qrcode.js'));
+    }
+
+    public function testLayoutReferencesSelfHostedAssets(): void
+    {
+        $body = (string) $this->get('/admin/login')->getBody();
+        self::assertStringContainsString('/assets/vendor/pico.min.css', $body);
+        self::assertStringContainsString('/assets/admin.css', $body);
+        self::assertStringContainsString('/assets/theme.js', $body);
+        self::assertStringContainsString('/assets/admin.js', $body);
+        // No CDN references at runtime.
+        self::assertStringNotContainsString('http://', str_replace('http-equiv', '', $body));
+        self::assertStringNotContainsString('https://', $body);
+    }
+
+    public function testAdminTemplatesContainNoInlineHandlersOrScripts(): void
+    {
+        $dir = dirname(__DIR__, 2) . '/templates/admin';
+        foreach (glob($dir . '/*.php') as $file) {
+            $html = (string) file_get_contents($file);
+
+            self::assertDoesNotMatchRegularExpression(
+                '/\son[a-z]+\s*=\s*["\']/i',
+                $html,
+                "Inline event handler in {$file}"
+            );
+            self::assertStringNotContainsString('javascript:', $html, "javascript: URI in {$file}");
+
+            // Every <script> must be an external src (no inline script bodies).
+            if (preg_match_all('/<script\b[^>]*>/i', $html, $tags)) {
+                foreach ($tags[0] as $tag) {
+                    self::assertStringContainsString('src=', $tag, "Inline <script> in {$file}: {$tag}");
+                }
+            }
+        }
+    }
+
+    // --- Helpers ----------------------------------------------------------
+
+    private function login(): void
+    {
+        $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => 'boss@example.com',
+            'password' => self::PASSWORD,
+        ]);
+    }
+
+    /**
+     * Insert a submission with a controlled created_at/status for the tests.
+     */
+    private function insertSubmission(
+        int $formId,
+        string $createdAt,
+        string $status,
+        int $attempts = 0,
+        ?string $lastError = null,
+        ?string $content = null,
+        ?string $nextAttemptAt = null
+    ): int {
+        $this->db->execute(
+            'INSERT INTO submissions
+                (form_id, created_at, remote_ip, origin, user_agent, status, content,
+                 attempts, last_error, next_attempt_at)
+             VALUES
+                (:form_id, :created_at, :remote_ip, :origin, :user_agent, :status, :content,
+                 :attempts, :last_error, :next_attempt_at)',
+            [
+                'form_id'         => $formId,
+                'created_at'      => $createdAt,
+                'remote_ip'       => '198.51.100.7',
+                'origin'          => 'https://example.com',
+                'user_agent'      => 'Test/1.0',
+                'status'          => $status,
+                'content'         => $content,
+                'attempts'        => $attempts,
+                'last_error'      => $lastError,
+                'next_attempt_at' => $nextAttemptAt,
+            ]
+        );
+
+        return (int) $this->db->pdo()->lastInsertId();
+    }
+
+    private function get(string $path, array $query = []): ResponseInterface
+    {
+        $request = $this->request('GET', $path);
+        if ($query !== []) {
+            $request = $request->withQueryParams($query);
+        }
+
+        return $this->app->handle($request);
+    }
+
+    /**
+     * @param array<string, string> $body
+     */
+    private function post(string $path, array $body): ResponseInterface
+    {
+        return $this->app->handle($this->request('POST', $path)->withParsedBody($body));
+    }
+
+    private function request(string $method, string $path): ServerRequestInterface
+    {
+        return (new ServerRequestFactory())->createServerRequest(
+            $method,
+            $path,
+            ['REMOTE_ADDR' => '203.0.113.5']
+        );
+    }
+
+    private function csrfFrom(ResponseInterface $response): string
+    {
+        $matched = preg_match('/name="_csrf" value="([a-f0-9]+)"/', (string) $response->getBody(), $m);
+        self::assertSame(1, $matched, 'Expected a CSRF token in the response body.');
+
+        return $m[1];
+    }
+}
