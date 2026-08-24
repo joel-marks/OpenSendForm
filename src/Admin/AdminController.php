@@ -11,6 +11,7 @@ use OpenSendForm\Auth\LoginOutcome;
 use OpenSendForm\Auth\RecoveryCodes;
 use OpenSendForm\Auth\SessionInterface;
 use OpenSendForm\Auth\Totp;
+use OpenSendForm\Auth\TotpOutcome;
 use OpenSendForm\Config;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -150,15 +151,25 @@ final class AdminController
             ], 400);
         }
 
-        if ($auth->verifyTotp((string) ($data['code'] ?? ''))) {
-            return self::redirect($response, '/admin');
-        }
+        $outcome = $auth->verifyTotp((string) ($data['code'] ?? ''), self::remoteIp($request));
 
-        return self::render($c, $response, 'totp', [
-            'title' => 'Two-factor authentication',
-            'csrf'  => self::csrf($c)->token(),
-            'error' => 'Invalid code.',
-        ], 401);
+        switch ($outcome) {
+            case TotpOutcome::Success:
+                return self::redirect($response, '/admin');
+            case TotpOutcome::RateLimited:
+                return self::render($c, $response, 'totp', [
+                    'title' => 'Two-factor authentication',
+                    'csrf'  => self::csrf($c)->token(),
+                    'error' => 'Too many attempts. Please try again later.',
+                ], 429);
+            case TotpOutcome::Invalid:
+            default:
+                return self::render($c, $response, 'totp', [
+                    'title' => 'Two-factor authentication',
+                    'csrf'  => self::csrf($c)->token(),
+                    'error' => 'Invalid code.',
+                ], 401);
+        }
     }
 
     // --- Logout -----------------------------------------------------------
