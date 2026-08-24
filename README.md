@@ -96,6 +96,33 @@ is unreachable it is left `failed` with a scheduled retry; `php bin/osf
 mail:retry` (wire it to cron on cPanel) re-sends everything due. A quick
 transport check without a submission: `php bin/osf mail:test --to=you@example.com`.
 
+## Cloudflare Turnstile (optional, per form)
+
+[Turnstile](https://developers.cloudflare.com/turnstile/) is Cloudflare's
+free, privacy-friendly CAPTCHA alternative. It is **optional and configured
+per form** — there is no global switch. A form uses Turnstile only once it
+has *both* a sitekey and a secret stored; otherwise the challenge is skipped.
+
+1. In the Cloudflare dashboard (free, no paid plan needed) create a Turnstile
+   widget and note its **Site Key** (public) and **Secret Key** (private).
+2. Enable it for a form, or clear it again:
+   ```
+   php bin/osf form:turnstile <ID> --sitekey=<SITE_KEY> --secret=<SECRET_KEY>
+   php bin/osf form:turnstile <ID> --disable
+   ```
+   Both keys are required to enable; `--disable` clears both. The secret is
+   stored server-side and is **never** returned by any endpoint — the token
+   endpoint advertises only the sitekey (`{"...","turnstile":{"sitekey":...}}`)
+   so the embed JS can render the widget.
+
+The client sends the widget's token back in the reserved field **`_osf_cf`**.
+When Turnstile is enabled a missing token is rejected with `turnstile_required`
+and a token Cloudflare rejects with `turnstile_failed`. The policy is
+**fail-open**: if Cloudflare's verify API is unreachable, times out or replies
+with malformed data the submission is allowed through (the honeypot, submit
+token and rate limits still apply) — only a response that positively says the
+token is invalid rejects it.
+
 ## Public API (v1)
 
 The public API is JSON-only and CORS-aware. All responses share one shape:
@@ -125,20 +152,24 @@ CORS preflights can be resolved exactly per form. Reserved body fields:
 
 - `_osf_token` — the token from the endpoint above
 - `_osf_hp` — honeypot; must be left empty
+- `_osf_cf` — Turnstile token; only required when the form has Turnstile
+  enabled (see above)
 
 Everything else is treated as user form data. If a field named `email` is
 present its syntax and mail-capable DNS record are checked.
 
 The request passes an ordered gauntlet: method/size → field hygiene →
 form lookup → origin allowlist → per-IP then per-form rate limits →
-honeypot → token → email validation → store. Abuse checks that only a
+honeypot → token → Turnstile (if enabled) → email validation → store.
+Abuse checks that only a
 bot would trip (filled honeypot; missing, forged or too-fast token) return
 a normal `{"ok":true}` and silently discard the submission — bots get no
 signal. A legitimate but **expired** token is the one honest timing
 failure: it returns `400 token_expired` so the client can refresh and
 retry. Other failures return specific codes: `invalid_fields`,
 `unknown_form`, `origin_not_allowed`, `rate_limited`, `payload_too_large`,
-`method_not_allowed`, `invalid_email`, `email_domain_invalid`.
+`method_not_allowed`, `invalid_email`, `email_domain_invalid`,
+`turnstile_required`, `turnstile_failed`.
 
 A stored submission is relayed by authenticated SMTP to the form's
 recipient. One send is attempted in-request; a failure never changes the
