@@ -1,13 +1,13 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-23 (Increment 2, Claude Code)
+Last updated: 2026-08-24 (fix/submit-route-form-key, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end (storage only; no mail
-yet). On top of the Increment 1 data model there is now a versioned v1
-API: a token endpoint, CORS preflights, and `POST /v1/submit` driven by an
-ordered validation/abuse pipeline. Submissions that pass are stored at
-status `received`. Test suite green (86 tests).
+yet). On top of the Increment 1 data model there is a versioned v1 API: a
+token endpoint, CORS preflights, and `POST /v1/form/{form_key}/submit`
+driven by an ordered validation/abuse pipeline. Submissions that pass are
+stored at status `received`. Test suite green (88 tests).
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -62,20 +62,34 @@ Increment 2 additions:
   header, Referer fallback). `src/Http/ApiResponse` — JSON contract + CORS.
 - `src/Submit/` — Stage interface, SubmitContext, SubmitOutcome, nine
   Stages/ classes, and SubmitPipeline (assembles + runs the fixed order).
-- Routes (v1): `GET /v1/form/{form_key}/token`, OPTIONS preflights for the
-  token endpoint and `/v1/submit`, and `POST /v1/submit`. `/v1/submit` is
-  also mapped for other verbs so a wrong method returns the contract's 405.
+- Routes (v1): `GET /v1/form/{form_key}/token`, `POST
+  /v1/form/{form_key}/submit`, and an OPTIONS preflight for each. The
+  submit route is also mapped for other verbs so a wrong method returns
+  the contract's 405. The form key travels only in the URL for both
+  routes — never in the body — so both preflights resolve one specific
+  form and echo its allowed origin exactly (see "CORS preflight" below).
 - AppFactory wires Database/Clock/DnsChecker/repositories/RateLimiter/
   SubmitToken/SubmitPipeline into the container; `create()` accepts
   optional Database/DnsChecker/Clock for test injection.
 
 ## Submission pipeline order (enforced + tested)
-method/body size → field hygiene (+ reserved `_osf_key/_osf_token/_osf_hp`
-split) → form lookup by key → origin allowlist (sets CORS) → per-IP then
-per-form rate limits → honeypot → token → email (syntax + MX/A, only if an
-`email` field is present) → store. Cheapest/most-abuse-relevant first;
-storage last. Order is locked by SubmitPipelineOrderTest and proven
+method/body size → field hygiene (+ reserved `_osf_token/_osf_hp` split) →
+form lookup by the URL's form_key → origin allowlist (sets CORS) → per-IP
+then per-form rate limits → honeypot → token → email (syntax + MX/A, only
+if an `email` field is present) → store. Cheapest/most-abuse-relevant
+first; storage last. Order is locked by SubmitPipelineOrderTest and proven
 behaviourally (bad origin + filled honeypot → origin_not_allowed).
+
+## CORS preflight
+Both `/v1/form/{form_key}/token` and `/v1/form/{form_key}/submit` preflight
+identically: look up the ACTIVE form by the URL's key, match Origin (or
+Referer fallback) against that form's own allowlist, and echo
+`Access-Control-Allow-Origin` only on a match. Unknown/inactive key or a
+non-matching origin: no ACAO header, nothing revealed about which origins
+are registered anywhere else in the installation. This replaced an earlier
+any-active-form preflight match for `/v1/submit` (form key used to travel
+in the body) that was rejected as an origin-enumeration risk — see
+QUESTIONS.md and the HISTORY.md entry for 2026-08-24.
 
 ## Known gaps / not built (by design this sprint)
 - No mail sending (submissions stop at `received`), Turnstile,
@@ -87,9 +101,7 @@ behaviourally (bad origin + filled honeypot → origin_not_allowed).
   re-parsed and file uploads are out of scope.
 
 ## Open items
-- QUESTIONS.md: confirm the /v1/submit CORS *preflight* origin rule (the
-  form key is unknown at preflight time; currently echoes the origin if any
-  active form allows it).
+- QUESTIONS.md: no open items currently.
 - Increment 3 (SMTP relay via PHPMailer with retry) next.
 
 ## Planned increment sequence (subject to revision)

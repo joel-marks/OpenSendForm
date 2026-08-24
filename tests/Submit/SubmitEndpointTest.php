@@ -56,7 +56,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3); // token now old enough to be VALID
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'name'                     => 'Ada',
             'message'                  => 'Hello there',
@@ -79,7 +78,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'name'                     => 'Ada',
         ], ['content_type' => 'application/json']));
@@ -94,7 +92,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'message'                  => 'secret content',
         ]));
@@ -114,7 +111,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'name'                     => 'Ada',
             'message'                  => 'Hello',
@@ -133,7 +129,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY      => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN    => $token,
             SubmitContext::FIELD_HONEYPOT => 'i am a bot',
             'name'                        => 'Ada',
@@ -147,8 +142,7 @@ final class SubmitEndpointTest extends TestCase
     public function testMissingTokenReturnsFakeSuccessAndStoresNothing(): void
     {
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-            'name'                   => 'Ada',
+            'name' => 'Ada',
         ]));
 
         self::assertSame(200, $response->getStatusCode());
@@ -162,7 +156,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $forged,
             'name'                     => 'Ada',
         ]));
@@ -178,7 +171,6 @@ final class SubmitEndpointTest extends TestCase
         // No clock advance: token age is 0, younger than MIN_SUBMIT_SECONDS.
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'name'                     => 'Ada',
         ]));
@@ -194,7 +186,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3601); // older than TOKEN_MAX_AGE_SECONDS
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'name'                     => 'Ada',
         ]));
@@ -209,7 +200,7 @@ final class SubmitEndpointTest extends TestCase
     public function testNonPostReturnsMethodNotAllowed(): void
     {
         $request = (new ServerRequestFactory())
-            ->createServerRequest('GET', '/v1/submit', ['REMOTE_ADDR' => '203.0.113.7']);
+            ->createServerRequest('GET', '/v1/form/' . $this->form['form_key'] . '/submit', ['REMOTE_ADDR' => '203.0.113.7']);
 
         $response = $this->handle($request);
 
@@ -219,7 +210,7 @@ final class SubmitEndpointTest extends TestCase
 
     public function testDeclaredContentLengthOverCapReturns413(): void
     {
-        $request = $this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']])
+        $request = $this->submitRequest([])
             ->withHeader('Content-Length', (string) (65536 + 1));
 
         $response = $this->handle($request);
@@ -232,8 +223,7 @@ final class SubmitEndpointTest extends TestCase
     {
         $big = str_repeat('a', 65536 + 10);
         $request = $this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-            'message'                => $big,
+            'message' => $big,
         ]);
 
         $response = $this->handle($request);
@@ -244,7 +234,7 @@ final class SubmitEndpointTest extends TestCase
 
     public function testTooManyFieldsReturnsInvalidFields(): void
     {
-        $fields = [SubmitContext::FIELD_KEY => $this->form['form_key']];
+        $fields = [];
         for ($i = 0; $i < 60; $i++) {
             $fields['f' . $i] = 'x';
         }
@@ -258,8 +248,7 @@ final class SubmitEndpointTest extends TestCase
     public function testOversizedFieldValueReturnsInvalidFields(): void
     {
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-            'message'                => str_repeat('a', 10240 + 1),
+            'message' => str_repeat('a', 10240 + 1),
         ]));
 
         self::assertSame(400, $response->getStatusCode());
@@ -269,9 +258,8 @@ final class SubmitEndpointTest extends TestCase
     public function testUnknownFormKeyReturns403(): void
     {
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => 'osf_deadbeef',
-            'name'                   => 'Ada',
-        ]));
+            'name' => 'Ada',
+        ], ['form_key' => 'osf_deadbeef']));
 
         self::assertSame(403, $response->getStatusCode());
         self::assertSame('unknown_form', $this->json($response)['error']['code']);
@@ -282,8 +270,7 @@ final class SubmitEndpointTest extends TestCase
         $this->forms->setActive($this->form['id'], false);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-            'name'                   => 'Ada',
+            'name' => 'Ada',
         ]));
 
         self::assertSame(403, $response->getStatusCode());
@@ -293,8 +280,7 @@ final class SubmitEndpointTest extends TestCase
     public function testDisallowedOriginReturns403WithoutCors(): void
     {
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-            'name'                   => 'Ada',
+            'name' => 'Ada',
         ], ['origin' => 'https://evil.com']));
 
         self::assertSame(403, $response->getStatusCode());
@@ -308,7 +294,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'email'                    => 'not-an-email',
         ]));
@@ -326,7 +311,6 @@ final class SubmitEndpointTest extends TestCase
         $this->clock->advance(3);
 
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY   => $this->form['form_key'],
             SubmitContext::FIELD_TOKEN => $token,
             'email'                    => 'user@nomail.example',
         ]));
@@ -345,15 +329,11 @@ final class SubmitEndpointTest extends TestCase
         $env = ['RATE_IP_PER_MINUTE' => '3'];
 
         for ($i = 0; $i < 3; $i++) {
-            $ok = $this->handle($this->submitRequest([
-                SubmitContext::FIELD_KEY => $this->form['form_key'],
-            ]), $env);
+            $ok = $this->handle($this->submitRequest([]), $env);
             self::assertSame(200, $ok->getStatusCode());
         }
 
-        $blocked = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY => $this->form['form_key'],
-        ]), $env);
+        $blocked = $this->handle($this->submitRequest([]), $env);
 
         self::assertSame(429, $blocked->getStatusCode());
         self::assertSame('rate_limited', $this->json($blocked)['error']['code']);
@@ -363,15 +343,15 @@ final class SubmitEndpointTest extends TestCase
     {
         $env = ['RATE_IP_PER_MINUTE' => '1'];
 
-        $first = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']]), $env);
+        $first = $this->handle($this->submitRequest([]), $env);
         self::assertSame(200, $first->getStatusCode());
 
-        $blocked = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']]), $env);
+        $blocked = $this->handle($this->submitRequest([]), $env);
         self::assertSame(429, $blocked->getStatusCode());
 
         // Advance into the next minute window: allowed again.
         $this->clock->advance(60);
-        $allowed = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']]), $env);
+        $allowed = $this->handle($this->submitRequest([]), $env);
         self::assertSame(200, $allowed->getStatusCode());
     }
 
@@ -381,12 +361,12 @@ final class SubmitEndpointTest extends TestCase
         // the per-IP counter never fills.
         $env = ['RATE_IP_PER_MINUTE' => '1000', 'RATE_FORM_PER_HOUR' => '2'];
 
-        $ip1 = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']], ['remote_ip' => '198.51.100.1']), $env);
-        $ip2 = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']], ['remote_ip' => '198.51.100.2']), $env);
+        $ip1 = $this->handle($this->submitRequest([], ['remote_ip' => '198.51.100.1']), $env);
+        $ip2 = $this->handle($this->submitRequest([], ['remote_ip' => '198.51.100.2']), $env);
         self::assertSame(200, $ip1->getStatusCode());
         self::assertSame(200, $ip2->getStatusCode());
 
-        $ip3 = $this->handle($this->submitRequest([SubmitContext::FIELD_KEY => $this->form['form_key']], ['remote_ip' => '198.51.100.3']), $env);
+        $ip3 = $this->handle($this->submitRequest([], ['remote_ip' => '198.51.100.3']), $env);
         self::assertSame(429, $ip3->getStatusCode());
         self::assertSame('rate_limited', $this->json($ip3)['error']['code']);
     }
@@ -398,7 +378,6 @@ final class SubmitEndpointTest extends TestCase
         // Bad origin AND a filled honeypot: the origin error must win,
         // proving stage (d) runs before stage (f).
         $response = $this->handle($this->submitRequest([
-            SubmitContext::FIELD_KEY      => $this->form['form_key'],
             SubmitContext::FIELD_HONEYPOT => 'bot',
         ], ['origin' => 'https://evil.com']));
 
@@ -453,7 +432,7 @@ final class SubmitEndpointTest extends TestCase
     public function testSubmitPreflightEchoesAllowedOrigin(): void
     {
         $request = (new ServerRequestFactory())
-            ->createServerRequest('OPTIONS', '/v1/submit')
+            ->createServerRequest('OPTIONS', '/v1/form/' . $this->form['form_key'] . '/submit')
             ->withHeader('Origin', self::ORIGIN);
 
         $response = $this->handle($request);
@@ -468,8 +447,37 @@ final class SubmitEndpointTest extends TestCase
     public function testSubmitPreflightWithholdsOriginWhenDisallowed(): void
     {
         $request = (new ServerRequestFactory())
-            ->createServerRequest('OPTIONS', '/v1/submit')
+            ->createServerRequest('OPTIONS', '/v1/form/' . $this->form['form_key'] . '/submit')
             ->withHeader('Origin', 'https://evil.com');
+
+        $response = $this->handle($request);
+
+        self::assertSame(204, $response->getStatusCode());
+        self::assertSame('', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
+    public function testSubmitPreflightWithholdsOriginForUnknownFormKey(): void
+    {
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('OPTIONS', '/v1/form/osf_nope/submit')
+            ->withHeader('Origin', self::ORIGIN);
+
+        $response = $this->handle($request);
+
+        self::assertSame(204, $response->getStatusCode());
+        self::assertSame('', $response->getHeaderLine('Access-Control-Allow-Origin'));
+    }
+
+    public function testSubmitPreflightDoesNotLeakAnotherFormsOrigin(): void
+    {
+        // Exact per-form matching: a second form's allowed origin must not
+        // be echoed for the first form's preflight (no cross-form
+        // enumeration of registered origins).
+        $this->forms->createForm('Other', 'owner2@example.com', ['https://other.example']);
+
+        $request = (new ServerRequestFactory())
+            ->createServerRequest('OPTIONS', '/v1/form/' . $this->form['form_key'] . '/submit')
+            ->withHeader('Origin', 'https://other.example');
 
         $response = $this->handle($request);
 
@@ -519,19 +527,21 @@ final class SubmitEndpointTest extends TestCase
     }
 
     /**
-     * Build a POST /v1/submit request carrying the given fields.
+     * Build a POST /v1/form/{form_key}/submit request carrying the given
+     * fields.
      *
      * @param array<string, mixed> $fields
-     * @param array{origin?: ?string, content_type?: string, remote_ip?: string} $opts
+     * @param array{origin?: ?string, content_type?: string, remote_ip?: string, form_key?: string} $opts
      */
     private function submitRequest(array $fields, array $opts = []): ServerRequestInterface
     {
         $origin = array_key_exists('origin', $opts) ? $opts['origin'] : self::ORIGIN;
         $contentType = $opts['content_type'] ?? 'application/x-www-form-urlencoded';
         $remoteIp = $opts['remote_ip'] ?? '203.0.113.7';
+        $formKey = $opts['form_key'] ?? $this->form['form_key'];
 
         $request = (new ServerRequestFactory())
-            ->createServerRequest('POST', '/v1/submit', ['REMOTE_ADDR' => $remoteIp])
+            ->createServerRequest('POST', '/v1/form/' . $formKey . '/submit', ['REMOTE_ADDR' => $remoteIp])
             ->withHeader('Content-Type', $contentType);
 
         if ($origin !== null) {

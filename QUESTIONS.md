@@ -2,14 +2,11 @@
 
 ## Increment 2
 
-1. **/v1/submit CORS preflight origin decision.** The spec says the
-   preflight should echo `Access-Control-Allow-Origin` "only when allowed",
-   but at preflight time the browser has not sent a body, so the target
-   form (and thus its allowlist) is unknown — only the `Origin` header is
-   available. Decision taken: the submit preflight echoes the origin if it
-   is allowlisted by **any active form**, otherwise withholds it. The real
-   per-form authorisation still happens on the POST itself (the origin
-   stage), so this only affects whether the browser is permitted to send
-   the request, not whether it is accepted. Please confirm this is the
-   intended behaviour, or specify an alternative (e.g. always echo, or
-   require the key as a query param on the preflight).
+1. **/v1/submit CORS preflight origin decision. RESOLVED (2026-08-24).**
+   The any-active-form preflight match was rejected: it let a caller
+   enumerate an installation's registered origins by probing preflights
+   with different Origin headers. Fix: the form key moved into the URL
+   (`POST /v1/form/{form_key}/submit`), so the preflight resolves the
+   specific form and echoes the origin only when that form's own allowlist
+   matches — exact, per-form, no enumeration surface. See
+   fix/submit-route-form-key and the HISTORY.md entry for 2026-08-24.

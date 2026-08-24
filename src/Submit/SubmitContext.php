@@ -15,7 +15,6 @@ use Psr\Http\Message\ServerRequestInterface;
 final class SubmitContext
 {
     /** Reserved field names carried alongside the user's form data. */
-    public const FIELD_KEY = '_osf_key';
     public const FIELD_TOKEN = '_osf_token';
     public const FIELD_HONEYPOT = '_osf_hp';
 
@@ -44,7 +43,9 @@ final class SubmitContext
      */
     public array $userFields = [];
 
-    public ?string $formKey = null;
+    /** The form key from the request URL (/v1/form/{form_key}/submit). */
+    public ?string $formKey;
+
     public ?string $token = null;
     public ?string $honeypot = null;
 
@@ -66,9 +67,10 @@ final class SubmitContext
     public ?string $originHeader = null;
     public ?string $refererHeader = null;
 
-    public function __construct(ServerRequestInterface $request)
+    public function __construct(ServerRequestInterface $request, ?string $formKey = null)
     {
         $this->request = $request;
+        $this->formKey = $formKey === '' ? null : $formKey;
 
         $server = $request->getServerParams();
         // REMOTE_ADDR only. Trusting X-Forwarded-For behind a proxy is a
