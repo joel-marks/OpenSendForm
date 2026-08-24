@@ -310,3 +310,55 @@
 - Docs: CONTEXT.md overwritten, both QUESTIONS.md Increment-3 items marked
   RESOLVED with one-line decision notes, this entry appended.
 - Deviations from prompt: none. No new Composer dependencies added.
+
+## 2026-08-24 — Increment 4: Cloudflare Turnstile (optional, per form)
+- Branch: feature/increment-4-turnstile (off latest main, PR #8 merged).
+  Adds optional per-form Turnstile verification. No new Composer
+  dependencies — server-side verification uses PHP's curl extension directly.
+- Data model: migration 006 adds `forms.turnstile_sitekey` and
+  `forms.turnstile_secret` (both TEXT NULL, one portable ADD COLUMN per
+  statement). A form is Turnstile-enabled iff BOTH are non-empty; there is no
+  global switch. `FormRepository::setTurnstile(id, sitekey, secret)` enforces
+  both-or-neither (blanks/nulls collapse to disabled) and hydrate() now
+  surfaces both columns (null when unset). The secret is never returned by any
+  endpoint.
+- Verification seam: `src/Turnstile/` — `TurnstileResult` (PHP 8.1 enum
+  VALID/INVALID/UNAVAILABLE), `TurnstileVerifierInterface`
+  (`verify(secret, token, remoteIp): TurnstileResult`), `CurlTurnstileVerifier`
+  (POST to challenges.cloudflare.com/turnstile/v0/siteverify; connect 2s /
+  total 3s; sends remoteip only when non-empty; any curl error, non-2xx,
+  non-string or malformed/`success`-less body → UNAVAILABLE), and
+  `tests/Support/FakeTurnstileVerifier` (records calls, scriptable result,
+  defaults VALID).
+- Pipeline: new `Submit\Stages\TurnstileStage` inserted between TokenStage and
+  EmailValidationStage. It returns instantly (no network) when the form is not
+  Turnstile-configured; else missing `_osf_cf` → 400 `turnstile_required`,
+  INVALID → 400 `turnstile_failed` (nothing stored), and VALID/UNAVAILABLE both
+  proceed (fail-open). Reserved field `_osf_cf` added to SubmitContext and
+  captured by FieldHygieneStage. Verifier threaded through
+  `AppFactory::create` and `SubmitPipeline::create` (6th/8th optional arg,
+  defaults to CurlTurnstileVerifier); SubmitPipelineOrderTest updated to lock
+  the new 11-stage order.
+- Token endpoint: `GET /v1/form/{key}/token` now returns
+  `{"ok":true,"token":"...","turnstile":{"sitekey":"..."}}` iff the form has
+  Turnstile enabled (sitekey only — the secret is never exposed).
+- CLI: `bin/osf form:turnstile ID --sitekey=X --secret=Y` (enable) and
+  `bin/osf form:turnstile ID --disable` (clear both), plus usage text.
+- Housekeeping: added `XDEBUG_MODE: "off"` to the app service in
+  .devcontainer/docker-compose.yml (with a comment; takes effect on next
+  container rebuild) so bin/osf CLI runs stop emitting Xdebug connect warnings.
+- Tests: added TurnstilePipelineTest (enabled+VALID → store/send; enabled+
+  INVALID → turnstile_failed, nothing stored; enabled+missing token →
+  turnstile_required, zero verify calls; enabled+UNAVAILABLE → fail-open
+  proceeds; disabled form → zero verify calls; token endpoint includes/omits
+  sitekey), CliTurnstileTest (shells out to bin/osf against a temp SQLite DB:
+  enable/disable round-trip, both-keys-required guard, unknown-ID report),
+  setTurnstile cases in FormRepositoryTest, and turnstile-column + version
+  assertions in SchemaMigrationsTest / MigrationRunnerTest. Full suite green
+  (144 tests, 1440 assertions; was 127).
+- README: added a "Cloudflare Turnstile" section (where to get the free keys,
+  the two CLI commands, the `_osf_cf` reserved field, the one-sentence
+  fail-open policy) and folded the new stage/codes into the API section.
+- Docs: CONTEXT.md overwritten, this HISTORY entry appended, QUESTIONS.md
+  unchanged (nothing ambiguous this sprint).
+- Deviations from prompt: none.

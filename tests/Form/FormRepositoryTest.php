@@ -91,6 +91,68 @@ final class FormRepositoryTest extends TestCase
         self::assertSame($a['id'], $forms[1]['id']);
     }
 
+    public function testNewFormHasTurnstileDisabled(): void
+    {
+        $form = $this->repo()->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        self::assertNull($form['turnstile_sitekey']);
+        self::assertNull($form['turnstile_secret']);
+    }
+
+    public function testSetTurnstileEnableThenDisableRoundTrip(): void
+    {
+        $repo = $this->repo();
+        $form = $repo->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        self::assertTrue($repo->setTurnstile($form['id'], '0xSITE', '0xSECRET'));
+
+        $enabled = $repo->findById($form['id']);
+        self::assertSame('0xSITE', $enabled['turnstile_sitekey']);
+        self::assertSame('0xSECRET', $enabled['turnstile_secret']);
+
+        self::assertTrue($repo->setTurnstile($form['id'], null, null));
+
+        $disabled = $repo->findById($form['id']);
+        self::assertNull($disabled['turnstile_sitekey']);
+        self::assertNull($disabled['turnstile_secret']);
+    }
+
+    public function testSetTurnstileTrimsAndTreatsBlanksAsDisable(): void
+    {
+        $repo = $this->repo();
+        $form = $repo->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        // Whitespace-only values collapse to null -> both-or-neither holds.
+        self::assertTrue($repo->setTurnstile($form['id'], '  ', '   '));
+
+        $row = $repo->findById($form['id']);
+        self::assertNull($row['turnstile_sitekey']);
+        self::assertNull($row['turnstile_secret']);
+    }
+
+    public function testSetTurnstileRejectsSitekeyWithoutSecret(): void
+    {
+        $repo = $this->repo();
+        $form = $repo->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        $this->expectException(InvalidArgumentException::class);
+        $repo->setTurnstile($form['id'], '0xSITE', null);
+    }
+
+    public function testSetTurnstileRejectsSecretWithoutSitekey(): void
+    {
+        $repo = $this->repo();
+        $form = $repo->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        $this->expectException(InvalidArgumentException::class);
+        $repo->setTurnstile($form['id'], null, '0xSECRET');
+    }
+
+    public function testSetTurnstileReturnsFalseForMissingForm(): void
+    {
+        self::assertFalse($this->repo()->setTurnstile(999, '0xSITE', '0xSECRET'));
+    }
+
     public function testRejectsInvalidRecipientEmail(): void
     {
         $this->expectException(InvalidArgumentException::class);

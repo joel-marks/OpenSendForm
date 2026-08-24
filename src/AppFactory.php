@@ -16,6 +16,8 @@ use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Submission\SubmissionRepository;
 use OpenSendForm\Submit\SubmitPipeline;
+use OpenSendForm\Turnstile\CurlTurnstileVerifier;
+use OpenSendForm\Turnstile\TurnstileVerifierInterface;
 use OpenSendForm\Validation\DnsChecker;
 use OpenSendForm\Validation\SystemDnsChecker;
 use Slim\App;
@@ -47,20 +49,25 @@ final class AppFactory
      *                                stop at 'received' (storage-only); the
      *                                front controller supplies a real mailer
      *                                only when SMTP is configured.
+     * @param TurnstileVerifierInterface|null $turnstile Optional Turnstile
+     *                                verifier; defaults to the real curl-backed
+     *                                implementation. Tests inject a fake.
      */
     public static function create(
         ?Config $config = null,
         ?Database $db = null,
         ?DnsChecker $dns = null,
         ?Clock $clock = null,
-        ?MailerInterface $mailer = null
+        ?MailerInterface $mailer = null,
+        ?TurnstileVerifierInterface $turnstile = null
     ): App {
         $config ??= Config::fromEnvironment();
         $db ??= Database::connect($config->dbDsn());
         $dns ??= new SystemDnsChecker();
         $clock ??= new SystemClock();
+        $turnstile ??= new CurlTurnstileVerifier();
 
-        $container = self::buildContainer($config, $db, $dns, $clock, $mailer);
+        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile);
 
         SlimAppFactory::setContainer($container);
         $app = SlimAppFactory::create();
@@ -80,7 +87,8 @@ final class AppFactory
         Database $db,
         DnsChecker $dns,
         Clock $clock,
-        ?MailerInterface $mailer
+        ?MailerInterface $mailer,
+        TurnstileVerifierInterface $turnstile
     ): Container {
         $container = new Container();
 
@@ -117,9 +125,10 @@ final class AppFactory
         if ($delivery !== null) {
             $container->set(DeliveryService::class, $delivery);
         }
+        $container->set(TurnstileVerifierInterface::class, $turnstile);
         $container->set(
             SubmitPipeline::class,
-            SubmitPipeline::create($config, $forms, $limiter, $tokens, $dns, $submissions, $delivery)
+            SubmitPipeline::create($config, $forms, $limiter, $tokens, $dns, $submissions, $delivery, $turnstile)
         );
 
         return $container;

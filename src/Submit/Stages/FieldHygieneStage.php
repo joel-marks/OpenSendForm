@@ -60,6 +60,7 @@ final class FieldHygieneStage implements Stage
         $context->fields = $strings;
         $context->token = $strings[SubmitContext::FIELD_TOKEN] ?? null;
         $context->honeypot = $strings[SubmitContext::FIELD_HONEYPOT] ?? null;
+        $context->turnstileToken = $strings[SubmitContext::FIELD_TURNSTILE] ?? null;
 
         $user = [];
         foreach ($strings as $name => $string) {
