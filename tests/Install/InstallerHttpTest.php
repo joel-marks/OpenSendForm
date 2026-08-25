@@ -119,6 +119,8 @@ final class InstallerHttpTest extends TestCase
         self::assertSame(200, $done->getStatusCode());
         self::assertStringContainsString('installed', (string) $done->getBody());
         self::assertStringContainsString('var/install.lock', (string) $done->getBody());
+        // Post-install handoff: the done screen points at the mail-setup wizard.
+        self::assertStringContainsString('/admin/mail', (string) $done->getBody());
 
         self::assertTrue($this->paths->isInstalled());
 

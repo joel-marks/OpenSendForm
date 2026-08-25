@@ -16,8 +16,9 @@ use function OpenSendForm\Admin\h;
 <ul>
     <li>
         <strong>Turn on email next.</strong> Right now submissions are saved but
-        no email is sent. After you sign in, open the admin panel to set up email
-        delivery so submissions reach your inbox.
+        no email is sent. After you sign in, open
+        <a href="/admin/mail">Email settings</a> to set up sending and send
+        yourself a test, so submissions reach your inbox.
     </li>
     <li>
         <strong>Re-running setup.</strong> The installer is now locked. If you
