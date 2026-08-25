@@ -1,20 +1,20 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-25 (feature/increment-6a-installer, Claude Code)
+Last updated: 2026-08-25 (feature/increment-6b-mail-wizard, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end and RELAYS BY EMAIL: a
-versioned v1 API (token endpoint, CORS preflights, `POST
-/v1/form/{form_key}/submit`) drives an ordered validation/abuse pipeline;
-passing submissions are stored and one in-request SMTP send is attempted, with
-failures retried by an operator cron. Increment 4 added optional per-form
-Cloudflare Turnstile. 5a/5b/5c built the ADMIN stack: argon2id auth with
-optional TOTP 2FA + recovery codes, a Pico.css design system, forms/submissions
-CRUD, account management and the single-tenant admin model. Increment 6a adds
-the BROWSER INSTALLER ENGINE: a merged config factory, a written config file +
-lock, an environment requirements check, and a CSRF-protected wizard that picks
-a database, runs migrations, creates the first admin and self-locks. Test suite
-green (336 tests). CI runs it on every PR/push.
+versioned v1 API drives an ordered validation/abuse pipeline; passing
+submissions are stored and one in-request SMTP send is attempted, failures
+retried by an operator cron. 4 added optional per-form Turnstile. 5a/5b/5c built
+the ADMIN stack (argon2id auth, optional TOTP 2FA + recovery codes, Pico.css
+design system, forms/submissions CRUD, single-tenant account/admins mgmt). 6a
+added the BROWSER INSTALLER ENGINE (merged config factory, written config +
+lock, requirements check, CSRF wizard that self-locks). 6b adds the MAIL-SETUP
+WIZARD in the admin panel (SMTP settings write-back, test send, SPF/DKIM/DMARC
+deliverability checker) plus installer polish. Suite green (381 tests). CI runs
+it on every PR/push. NOTE: 6a is not yet merged to main; 6b is branched off 6a
+(see QUESTIONS.md).
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -26,93 +26,76 @@ to the site owner.
 - Name: OpenSendForm. Stack: PHP 8.1+ / Slim 4 / Composer / PHPMailer /
   SQLite default (MySQL optional via PDO). Server-rendered admin UI on
   Pico.css; no JS framework, no build step; JS is enhancement-only.
-- All SQL portable across sqlite + mysql (portable types; date arithmetic in
-  PHP, not SQL). Timestamps stored as UTC `Y-m-d H:i:s` TEXT.
-- Form keys are PUBLIC identifiers, stored plain. A "form" is the unit of
-  config (key, recipient, origins, toggles).
-- Response contract (FROZEN — embed JS builds against it): JSON only.
-  Success `{"ok":true}`; failure `{"ok":false,"error":{"code","message"}}`.
-  HTTP: 200 ok, 400 validation, 403 key/origin, 405 method, 413 too large,
-  429 rate limited.
+- All SQL portable across sqlite + mysql; timestamps stored as UTC `Y-m-d
+  H:i:s` TEXT. Form keys are PUBLIC identifiers, stored plain.
+- Response contract (FROZEN): JSON only. Success `{"ok":true}`; failure
+  `{"ok":false,"error":{"code","message"}}`. HTTP: 200/400/403/405/413/429.
 - Bot-facing checks fail SILENTLY; an authentic but EXPIRED token returns an
   honest `400 token_expired`.
-- Storage: metadata always stored. Content is always stored as the in-flight
-  delivery payload; `store_content` means "retain content after successful
-  delivery" (cleared on `sent` unless on; `failed`/`dead` keep it until purge).
+- Content always stored as the in-flight delivery payload; `store_content`
+  means "retain content after successful delivery".
+- Config precedence: defaults < var/config.php < environment (env always wins,
+  so the dev container is unchanged). Env-shadowed file values are surfaced.
 
-## Mail relay (Increment 3) — condensed; see HISTORY for detail
+## Mail relay (Increment 3) — condensed; see HISTORY
 - `Mail\MessageBuilder`: From ALWAYS the service address; Reply-To the
-  submitter's `email` only when valid; no other submitter data in a header.
-- `Mail\DeliveryService`: `attemptDelivery()` (success → `sent` + clearContent
-  unless store_content; failure → `failed`+backoff, `dead` at MAIL_MAX_ATTEMPTS)
-  and `retryDue()`. Fake-clock testable; FakeMailer scriptable. Config:
-  MAIL_ENABLED, SMTP_*, MAIL_MAX_ATTEMPTS (5), MAIL_RETRY_BACKOFF_MINUTES.
-  `bin/osf` mail:retry / mail:test. With no SMTP host the app runs storage-only.
+  submitter's valid `email` only; no submitter data in any header.
+- `Mail\DeliveryService`: attemptDelivery (sent/clearContent unless store_content;
+  failed+backoff; dead at MAIL_MAX_ATTEMPTS) + retryDue. Fake-clock testable.
+  MAIL_ENABLED is the primary switch (AND smtpHost non-empty). `bin/osf`
+  mail:retry / mail:test.
 
-## Turnstile (Increment 4) — condensed; see HISTORY for detail
-- Optional PER FORM, both-or-neither (`turnstile_sitekey` + `turnstile_secret`,
-  migration 006, `FormRepository::setTurnstile()`). Verifier interface + Curl
-  impl + fake; `TurnstileStage` fail-open. Secret NEVER exposed by any endpoint.
-  `bin/osf form:turnstile`.
+## Turnstile (Increment 4) — condensed; see HISTORY
+- Optional PER FORM, both-or-neither. Verifier interface + Curl impl + fake;
+  fail-open. Secret NEVER exposed. `bin/osf form:turnstile`.
 
-## Admin auth + design system (5a/5b) — condensed; see HISTORY for detail
-- Migration 007 `admins`. `src/Auth/*`: PasswordHasher (argon2id), Base32, Totp
-  (RFC 6238), RecoveryCodes, AdminRepository. Session seam `SessionInterface`
-  (NativeSession lazy-start, hardened; FakeSession for tests). `AuthService`
-  (rate limits, idle 30m / absolute 12h, pending-TOTP 300s). `Csrf` per session.
-- Vendored MIT assets (pinned in-file, no CDN): Pico.css v2.0.6, qrcode-generator
-  v1.4.4. Our `admin.css` (brand palette light+dark, WCAG AA), `theme.js`
-  (pre-paint), `admin.js` (copy, segmented TOTP, client QR, recovery gate).
-- `AdminController`/`AdminRoutes`/`TemplateRenderer`+`h()`; `AdminView` chrome;
-  `Flash`. SecurityHeadersMiddleware (strict CSP) wraps /admin; AuthMiddleware
-  protects all but login/totp. Every screen works with JS off; no inline
-  scripts/styles/handlers (regression-tested). Dashboard, Forms CRUD (secret
-  write-only, both-or-neither), Submissions (paginated, METADATA ONLY, retry).
+## Admin stack (5a/5b/5c) — condensed; see HISTORY
+- Migrations 007/008 `admins` (+is_active). Auth primitives (PasswordHasher
+  argon2id, Base32, Totp RFC 6238, RecoveryCodes, AdminRepository). Session seam
+  (NativeSession/FakeSession), Csrf, AuthService (rate limits, idle/absolute
+  timeouts, TOTP gate). Vendored MIT assets (Pico.css 2.0.6, qrcode 1.4.4).
+  AdminView chrome, Flash, TemplateRenderer + `h()`. Strict CSP; every screen
+  works JS-off, no inline scripts. Screens: dashboard, forms CRUD (write-only
+  secret), submissions (metadata only), account, admins (last-active guard), 2FA
+  lifecycle. Single-tenant; no roles; retirement = deactivation.
 
-## Admin account mgmt + 2FA lifecycle (5c) — condensed; see HISTORY for detail
-- SINGLE-TENANT: every admin co-operates on one installation, sees all
-  forms/submissions; no roles. No deletion — retirement is deactivation.
-- Migration 008 `admins.is_active`. `AccountController`+`account.php` (change
-  name / email [needs current pw] / password [session rotated]). `AdminsController`
-  +`admins.php` (roster, create, deactivate/reactivate). GUARD: last active admin
-  can never be deactivated. AuthService refuses inactive admin (generic Invalid)
-  and invalidates a live session on the next request. Dashboard 2FA nudge; full
-  2FA disable flow (current pw AND current code); recovery UX consistent.
+## Browser installer engine (Increment 6a) — condensed; see HISTORY
+- Installed iff BOTH var/config.php and var/install.lock exist
+  (`Install\Paths::isInstalled()`). `InstallStateMiddleware` gates routing
+  (opt-in via install Paths to AppFactory). Config refactor: `fromFile`,
+  merged `load(file,env)`, `generateSecret()` (64 hex), DB_USER/DB_PASS.
+  Requirements (injectable probe), InstallerService (DbConnector seam, atomic
+  temp+rename+0600 commit, config-then-lock with rollback), CSRF wizard
+  (welcome→database→admin→finish→done), `bin/osf install:status`, OSF_BASE_DIR.
+  Written config sets MAIL_ENABLED=0.
 
-## Browser installer engine (Increment 6a) — this sprint
-- INSTALLED-STATE MODEL: installed iff BOTH `var/config.php` and
-  `var/install.lock` exist (`Install\Paths::isInstalled()`). Not installed →
-  every non-install route (public API included) redirects to /install; installed
-  → all /install routes 404 (routing via `InstallStateMiddleware`, plus a hard
-  check at the top of every controller step). Exception: /install/done stays
-  reachable, self-guarded by a one-time session flag. `var/install.lock` holds
-  the install timestamp + app version; re-install = delete the lock by hand.
-- CONFIG REFACTOR: `Config::fromFile(path)` and the merged `Config::load(file,
-  env)` — precedence defaults < file < environment (env always wins, so the dev
-  container is unchanged; pure-env when no file). `Config::generateSecret()` =
-  64 hex (32 random bytes). New `DB_USER`/`DB_PASS` keys + `dbUser()/dbPass()`
-  (null when empty) threaded into `Database::connect`. `var/config.php` returns
-  a PHP array, written atomically (temp+rename, 0600), header notes env override.
-- REQUIREMENTS (`Install\Requirements` + injectable `EnvironmentProbe`/
-  SystemProbe): pass/warn/fail rows with plain-language remedy. PHP≥8.1 (fail),
-  pdo_sqlite (fail only if pdo_mysql also absent, else warn), pdo_mysql (warn),
-  openssl (fail), curl (warn), var/ + var/data/ writable (fail), HTTPS (warn).
-- INSTALLER SERVICE (`Install\InstallerService`, `DbConnector` seam +
-  PdoDbConnector): validate DB choice (sqlite default path / mysql host-port-
-  dbname-user-pass with a live connection test → friendly failure), migrate,
-  create first admin (via AdminRepository, ≥12 twice), then COMMIT — write config
-  then lock atomically; a lock-write failure rolls back the config so no partial
-  install remains. Written config sets MAIL_ENABLED=0, APP_ENV=production.
-- WIZARD (`Install\InstallController`/`InstallRoutes`, `templates/install/*`,
-  reusing the admin design system + strict CSP): GET /install (welcome +
-  requirements; Continue disabled on any fail), GET/POST /install/database,
-  GET/POST /install/admin, GET/POST /install/finish (review + atomic commit),
-  GET /install/done. Step order enforced via session; jumping ahead bounces to
-  the earliest incomplete step. Every POST CSRF-protected; no secret (DB or
-  admin password) is ever echoed back into a field.
-- `bin/osf install:status` reports installed/not-installed + config/lock presence
-  + lock timestamp/version (no DB touch, no secrets). `OSF_BASE_DIR` relocates the
-  writable var/ tree (Paths honours it; front controller + CLI agree on it).
+## Mail-setup wizard + installer polish (Increment 6b) — this sprint
+- `/admin/mail` (nav "Email", `Admin\MailController` + `templates/admin/mail.php`):
+  SMTP host/port/encryption(none/starttls/smtps)/user/password + From
+  address/name + MAIL_ENABLED toggle. Validation; save writes var/config.php via
+  `Install\ConfigWriter` (atomic temp+rename+0600, merges over stored values so
+  untouched keys survive). Password is WRITE-ONLY (blank keeps the stored file
+  value); the stored secret is never rendered. When an env var shadows a stored
+  file value, a notice names the setting (file-value vs effective compare).
+- Test send: POST /admin/mail/test uses the container `MailerInterface` (real
+  PhpMailerMailer built from current Config, or an injected fake) on the SAVED
+  settings; defaults recipient to the logged-in admin; flashes success or the
+  sanitised+truncated error. A success while sending is off unlocks a one-click
+  "Enable sending now" (POST /admin/mail/enable → MAIL_ENABLED=1).
+- Deliverability: `Mail\DeliverabilityChecker` over an injectable
+  `Mail\DnsResolver` (SystemDnsResolver = dns_get_record TXT, offline-safe;
+  FakeDnsResolver in tests). SPF (TXT `v=spf1`), DKIM (`{selector}._domainkey`,
+  selector re-checkable, key comes from host), DMARC (`_dmarc` `v=DMARC1`).
+  Each: green/amber, the exact record to add (copy button, reusing `[data-copy]`)
+  and where. Malformed record → treated as absent.
+- Handoff: installer done screen links `/admin/mail`; dashboard shows a second
+  dismissible nudge "Email sending is not set up yet" (mirrors the 2FA nudge)
+  when MAIL_ENABLED is off (POST /admin/nudge/mail/dismiss).
+- Installer polish: /install/database MySQL section is `data-mysql-details`,
+  hidden by `public/assets/install.js` while SQLite is chosen (radios are
+  `data-db-driver`); visible with JS off (unchanged layout).
+- CLI: `bin/osf mail:status` prints config state (no secrets) + live SPF/DKIM/
+  DMARC lookups for the From domain (skips gracefully offline).
 
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene → form lookup by URL key → origin allowlist
@@ -121,33 +104,31 @@ method/body size → field hygiene → form lookup by URL key → origin allowli
 Locked by SubmitPipelineOrderTest.
 
 ## What exists now
-Increments 0–5c as before, plus 6a: `src/Install/{Paths,EnvironmentProbe,
-SystemProbe,Requirements,DbConnector,PdoDbConnector,InstallerService,
-InstallerException,InstallController,InstallRoutes,InstallStateMiddleware}.php`;
-`templates/install/{layout,welcome,database,admin,finish,done}.php`; Config
-refactor + DB_USER/DB_PASS; AppFactory install wiring (8th param = install
-Paths, gating opt-in); public/index.php + bin/osf boot via merged factory;
-`bin/osf install:status`; tests `tests/Install/*`, `tests/ConfigMergeTest.php`,
-`tests/Cli/CliInstallStatusTest.php`, support `FakeProbe`/`FakeDbConnector`.
-Only hard Composer dep remains phpmailer/phpmailer ^6.
+0–6a as before, plus 6b: `src/Mail/{DnsResolver,SystemDnsResolver,
+DeliverabilityChecker}.php`, `src/Install/ConfigWriter.php`,
+`src/Admin/MailController.php`, `templates/admin/mail.php`,
+`public/assets/install.js`; AppFactory wiring (MailerInterface, ConfigWriter,
+DnsResolver, DeliverabilityChecker; 9th `?DnsResolver` param); AdminRoutes mail
+routes + mail-nudge dismiss; dashboard mail banner; `bin/osf mail:status`;
+tests `tests/Mail/DeliverabilityCheckerTest`, `tests/Install/{ConfigWriterTest,
+InstallerDatabaseToggleTest}`, `tests/Admin/MailWizardHttpTest`,
+`tests/Cli/CliMailStatusTest`, support `FakeDnsResolver`. Only hard Composer dep
+remains phpmailer/phpmailer ^6.
 
-## Known gaps / not built (by design this sprint)
-- SMTP/DNS email-setup wizard (6b), embed snippet/JS (7), synthetic monitoring,
-  zip packaging/release layout, upgrade/migration-on-update — later increments.
+## Known gaps / not built (by design)
+- Embed snippet/JS (7), synthetic monitoring (8), zip packaging/release layout,
+  upgrade/migration-on-update — later increments.
 - Password RESET by email, roles/permissions, account deletion, audit log.
-- Real MySQL live-test and NativeSession's real `$_SESSION` path stay un-unit-
-  tested (network/globals); covered via fakes.
-- front-end assets run through PHP reference + no-inline tests only; no DOM harness.
+- Per-form mail overrides, provider-specific SMTP presets (nice-to-have later).
+- Real MySQL live-test, NativeSession `$_SESSION`, real SMTP send and live DNS
+  stay un-unit-tested (network/globals); covered via fakes. No DOM harness.
 
 ## Open items
-- QUESTIONS.md: all prior items RESOLVED; no new blocking questions this sprint.
-- Increment 6b (SMTP/DNS wizard) turns MAIL_ENABLED on from the admin panel;
-  6a intentionally ships mail off with the success screen pointing there.
+- QUESTIONS.md: Increment 6b item 1 flags branch/merge order (6a not on main;
+  6b built on 6a). No blocking code questions.
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin
-auth. 5b. Design system + CRUD. 5c. Account mgmt + 2FA lifecycle. — ALL DONE
-6a. Browser installer engine (requirements, config, DB, first admin, self-lock).
-— DONE
-6b. Email-setup (SMTP/DNS) wizard. 7. Embed snippet + JS. 8. Synthetic
-monitoring + alerting.
+auth. 5b. Design system + CRUD. 5c. Account mgmt + 2FA lifecycle. 6a. Installer
+engine. 6b. Email-setup (SMTP/DNS) wizard + installer polish. — ALL DONE
+7. Embed snippet + JS. 8. Synthetic monitoring + alerting.

@@ -22,8 +22,8 @@ Cloudflare Turnstile. Server-rendered admin panel with 2FA.
 
 OpenSendForm is designed to install on ordinary shared cPanel/PHP hosting with
 no command line — just a file upload and a short browser wizard. (It is still
-pre-alpha; the pieces below work, but the release zip and the email-setup
-wizard land in later increments.)
+pre-alpha; the pieces below work, but the release zip lands in a later
+increment.)
 
 1. **Upload and extract the zip** into a folder on your host, and point a
    domain or subdomain at that folder's `public/` directory (its document
@@ -46,8 +46,8 @@ wizard land in later increments.)
 
 **Email comes after first login.** A fresh install stores submissions but does
 not send email yet; you enable email delivery from the admin panel once you're
-signed in. Until then, submissions are safely saved and can be delivered once
-mail is set up.
+signed in (see *Setting up email* below). Until then, submissions are safely
+saved and can be delivered once mail is set up.
 
 **Re-running the installer** is deliberate: delete the file
 `var/install.lock` with your host's file manager, then reload `/install`.
@@ -181,6 +181,9 @@ enhancements (theme toggle, click-to-copy, QR code, segmented 2FA inputs).
   *Retry all due now* runs the whole due queue. The fields a visitor typed
   are never displayed (that content is the in-flight delivery payload; see
   the storage note above).
+- **Email** (`/admin/mail`) — the mail-setup wizard: SMTP settings, a test
+  send, and an SPF/DKIM/DMARC deliverability checker (see *Setting up email*
+  below). While sending is off, the dashboard shows a dismissible nudge here.
 - **Account** (`/admin/account`) — your own account: change your display
   name, your email (requires your current password) and your password (current
   password plus a new one, at least 12 characters, twice; your session id is
@@ -256,6 +259,35 @@ clears the secret and all recovery codes.
 Forms can equally be provisioned from the CLI — see `php bin/osf form:create`
 and `php bin/osf form:turnstile` above — so scripted setup and the UI stay
 interchangeable.
+
+## Setting up email
+
+Open **Email** in the admin nav (`/admin/mail`) to turn a fresh install from
+"saving submissions" into "emailing them to you". The page has three parts and
+you can come back to it any time.
+
+1. **Sending account (SMTP).** Enter the host, port, encryption, username and
+   password your mailbox or hosting provider gives you — the same details an
+   email program uses. Each choice has a one-line explanation. The password is
+   write-only: it is never shown back, and leaving it blank on a later save
+   keeps the one already stored. Also set the **From** address and name your
+   recipients will see, and the **Send emails for new submissions** switch.
+   Settings are written to `var/config.php`; a server environment variable, if
+   set, still overrides a saved value, and the page tells you when one does.
+2. **Send a test email.** This sends one message through your *saved* settings
+   (defaulting to your own address). The email arriving is the proof it works —
+   if it does and sending is still off, one click turns it on.
+3. **Deliverability (SPF, DKIM, DMARC).** These three DNS records are what stop
+   your mail landing in spam: **SPF** lists who may send for your domain,
+   **DKIM** signs each message so it can't be forged, and **DMARC** tells
+   receivers what to do with anything that fails the first two. The page checks
+   your From domain and, for anything missing, shows the exact record to add
+   (with a copy button) and where to add it — your registrar's DNS manager or
+   cPanel's *Zone Editor*. Use **Re-check** after publishing a record.
+
+From the command line, `php bin/osf mail:status` prints the current mail
+configuration (never any secret) and runs the same three DNS checks as live
+lookups for the configured From domain.
 
 ## Public API (v1)
 
