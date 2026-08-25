@@ -119,6 +119,12 @@ final class AuthService
             return LoginOutcome::Invalid;
         }
 
+        // A deactivated admin is refused with the SAME generic outcome as a
+        // wrong password — deactivation status is never disclosed at login.
+        if ((int) $admin['is_active'] !== 1) {
+            return LoginOutcome::Invalid;
+        }
+
         // Opportunistic rehash while we still hold the plaintext.
         if ($this->hasher->needsRehash($admin['password_hash'])) {
             $this->admins->updatePasswordHash($admin['id'], $this->hasher->hash($password));
@@ -233,8 +239,10 @@ final class AuthService
         }
 
         $admin = $this->admins->findById($id);
-        if ($admin === null) {
-            // Account removed underneath the session.
+        if ($admin === null || (int) $admin['is_active'] !== 1) {
+            // Account removed or deactivated underneath the session: a live
+            // session for a now-inactive admin is invalidated here, on its
+            // very next request.
             $this->logout();
 
             return null;
