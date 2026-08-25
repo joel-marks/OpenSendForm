@@ -16,12 +16,15 @@ $link = static function (string $key, string $href, string $label) use ($active)
         <li><?= $link('dashboard', '/admin', 'Dashboard') ?></li>
         <li><?= $link('forms', '/admin/forms', 'Forms') ?></li>
         <li><?= $link('submissions', '/admin/submissions', 'Submissions') ?></li>
+        <li><?= $link('admins', '/admin/admins', 'Admins') ?></li>
         <li>
             <button type="button" class="osf-theme-toggle" data-theme-toggle
                     aria-label="Toggle colour theme" title="Toggle colour theme">☾</button>
         </li>
         <?php if (($adminName ?? '') !== ''): ?>
-            <li class="osf-admin-name"><?= h($adminName) ?></li>
+            <li class="osf-admin-name">
+                <?= $link('account', '/admin/account', $adminName) ?>
+            </li>
         <?php endif; ?>
         <li>
             <form method="post" action="/admin/logout">
