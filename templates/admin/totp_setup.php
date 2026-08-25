@@ -11,19 +11,51 @@
         Confirm with a current code from your authenticator app.
     </p>
     <?php if (($error ?? '') !== ''): ?>
-        <p role="alert"><strong><?= h($error) ?></strong></p>
+        <p class="osf-flash osf-flash--error" role="alert"><strong><?= h($error) ?></strong></p>
     <?php endif; ?>
+    <?php /* Same six-box segmented enhancement (data-totp-code) as the login
+             screen, from the shared admin.js — no divergent markup. */ ?>
     <form method="post" action="/admin/totp/recovery-codes/regenerate">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
         <p>
             <label for="code">Authentication code</label><br>
             <input type="text" id="code" name="code" inputmode="numeric"
-                   autocomplete="one-time-code" required>
+                   autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
+                   required data-totp-code>
         </p>
         <p>
             <button type="submit">Regenerate recovery codes</button>
         </p>
     </form>
+
+    <?php /* Clearly separated destructive action: disabling 2FA. */ ?>
+    <section class="osf-danger-zone">
+        <h2>Disable two-factor authentication</h2>
+        <p>
+            Turning off two-factor authentication removes your authenticator
+            secret and all recovery codes. To confirm, enter your current
+            password <strong>and</strong> a current code from your app.
+        </p>
+        <?php if (($disableError ?? '') !== ''): ?>
+            <p class="osf-flash osf-flash--error" role="alert"><strong><?= h($disableError) ?></strong></p>
+        <?php endif; ?>
+        <form method="post" action="/admin/totp/disable">
+            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+            <p>
+                <label for="disable_password">Current password</label><br>
+                <input type="password" id="disable_password" name="current_password"
+                       autocomplete="current-password" required>
+            </p>
+            <p>
+                <label for="disable_code">Authentication code</label><br>
+                <input type="text" id="disable_code" name="code" inputmode="numeric"
+                       autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
+            </p>
+            <p>
+                <button type="submit" class="secondary">Disable two-factor authentication</button>
+            </p>
+        </form>
+    </section>
 
 <?php else: ?>
 

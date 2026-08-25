@@ -148,6 +148,36 @@
 .osf-flash--error   { background: var(--osf-danger-bg); color: var(--osf-danger-fg); }
 .osf-flash--info    { background: var(--osf-info-bg);   color: var(--osf-info-fg); }
 
+/* Dashboard 2FA nudge: an info flash with the dismiss button pushed right. */
+.osf-nudge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Separated destructive-action block (e.g. disabling two-factor auth). */
+.osf-danger-zone {
+    margin-top: 2rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--osf-danger-fg);
+    border-radius: var(--pico-border-radius);
+}
+
+/* Recovery codes shown one per line in a monospace block. */
+.osf-recovery-block {
+    padding: 0.75rem 1rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.osf-recovery-block code {
+    background: none;
+    padding: 0;
+}
+
 /* --- Tables ----------------------------------------------------------- */
 
 /* Wide tables scroll horizontally inside their own box on small screens. */

@@ -3,17 +3,15 @@
 
 <p class="osf-flash osf-flash--error" role="alert">
     <strong>Copy these codes now and store them somewhere safe.</strong>
-    They are shown only once and will never be displayed again. Each code can
-    be used a single time to sign in if you lose access to your authenticator.
+    They are shown only once and will never be displayed again. Each code works
+    exactly once to sign in if you lose access to your authenticator.
 </p>
 
-<?php /* Plain, selectable list — the fallback with JavaScript disabled. The
+<?php /* One code per line in a monospace block — the plain, selectable
+         fallback with JavaScript disabled. "Copy all" joins the lines with
+         newlines so the clipboard preserves the one-per-line layout. The
          copy/download buttons and the "saved" gate below are enhancements. */ ?>
-<ul data-recovery-codes>
-<?php foreach ($codes as $code): ?>
-    <li><code data-recovery-code><?= h($code) ?></code></li>
-<?php endforeach; ?>
-</ul>
+<pre class="osf-recovery-block" data-recovery-codes><?php foreach ($codes as $i => $code): ?><?= $i > 0 ? "\n" : '' ?><code data-recovery-code><?= h($code) ?></code><?php endforeach; ?></pre>
 
 <p>
     <button type="button" class="secondary" data-recovery-copy hidden>Copy all</button>

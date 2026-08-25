@@ -14,6 +14,23 @@ use function OpenSendForm\Admin\statusBadgeClass;
 ?>
 <h1>Dashboard</h1>
 
+<?php if (($showNudge ?? false) === true): ?>
+    <?php /* Dismissible-per-session nudge urging 2FA enrolment. Dismissing
+             sets a session flag (see AdminController::dismissNudge); it
+             returns after 2FA is disabled again. */ ?>
+    <div class="osf-flash osf-flash--info osf-nudge" role="note">
+        <span>
+            <strong>Protect your account.</strong>
+            Two-factor authentication is not enabled.
+            <a href="/admin/totp/setup">Set it up now</a>.
+        </span>
+        <form method="post" action="/admin/nudge/dismiss" class="osf-inline-form">
+            <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
+            <button type="submit" class="secondary outline">Dismiss</button>
+        </form>
+    </div>
+<?php endif; ?>
+
 <section class="osf-stats">
     <article class="osf-stat">
         <div class="osf-stat-value"><?= h((string) $activeForms) ?></div>
