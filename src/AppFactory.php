@@ -19,6 +19,11 @@ use OpenSendForm\Auth\Totp;
 use OpenSendForm\Clock\Clock;
 use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Install\InstallerService;
+use OpenSendForm\Install\InstallRoutes;
+use OpenSendForm\Install\InstallStateMiddleware;
+use OpenSendForm\Install\Paths;
+use OpenSendForm\Install\PdoDbConnector;
 use OpenSendForm\Mail\DeliveryService;
 use OpenSendForm\Mail\MailerInterface;
 use OpenSendForm\Mail\MessageBuilder;
@@ -66,6 +71,15 @@ final class AppFactory
      * @param SessionInterface|null $session Optional session store; defaults to
      *                                the native PHP session. Tests inject an
      *                                array-backed fake to drive the admin flow.
+     * @param Paths|null $installPaths Optional installer paths. When supplied,
+     *                                the installed-state gate is ACTIVE: until
+     *                                both the config file and lock exist every
+     *                                non-install route redirects to /install,
+     *                                and once installed the install routes 404.
+     *                                When null the gate is disabled (the app
+     *                                behaves as installed) — the default the
+     *                                test suite relies on. public/index.php
+     *                                passes Paths::production() to switch it on.
      */
     public static function create(
         ?Config $config = null,
@@ -74,16 +88,21 @@ final class AppFactory
         ?Clock $clock = null,
         ?MailerInterface $mailer = null,
         ?TurnstileVerifierInterface $turnstile = null,
-        ?SessionInterface $session = null
+        ?SessionInterface $session = null,
+        ?Paths $installPaths = null
     ): App {
         $config ??= Config::fromEnvironment();
-        $db ??= Database::connect($config->dbDsn());
+        $db ??= Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
         $dns ??= new SystemDnsChecker();
         $clock ??= new SystemClock();
         $turnstile ??= new CurlTurnstileVerifier();
         $session ??= new NativeSession();
 
-        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile, $session);
+        // Gating is opt-in: enabled only when explicit install paths are given.
+        $gateInstall = $installPaths !== null;
+        $installPaths ??= Paths::production();
+
+        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile, $session, $installPaths);
 
         SlimAppFactory::setContainer($container);
         $app = SlimAppFactory::create();
@@ -95,6 +114,11 @@ final class AppFactory
 
         Routes::register($app);
         AdminRoutes::register($app);
+        InstallRoutes::register($app);
+
+        // Outermost middleware: decide reachability from the installed state
+        // before any route runs.
+        $app->add(new InstallStateMiddleware($installPaths, $gateInstall));
 
         return $app;
     }
@@ -106,7 +130,8 @@ final class AppFactory
         Clock $clock,
         ?MailerInterface $mailer,
         TurnstileVerifierInterface $turnstile,
-        SessionInterface $session
+        SessionInterface $session,
+        Paths $installPaths
     ): Container {
         $container = new Container();
 
@@ -169,6 +194,20 @@ final class AppFactory
         $container->set(
             TemplateRenderer::class,
             new TemplateRenderer(dirname(__DIR__) . '/templates/admin')
+        );
+
+        // Browser installer. Paths carry where the config/lock/data/migrations
+        // live; the connector opens the chosen DB (real PDO in production, a
+        // fake in tests). The install renderer is a TemplateRenderer bound to
+        // templates/install/ under a string key to sit beside the admin one.
+        $container->set(Paths::class, $installPaths);
+        $container->set(
+            InstallerService::class,
+            new InstallerService($installPaths, new PdoDbConnector(), $hasher, $recovery)
+        );
+        $container->set(
+            'install.renderer',
+            new TemplateRenderer(dirname(__DIR__) . '/templates/install')
         );
 
         return $container;

@@ -9,6 +9,7 @@ use OpenSendForm\Auth\RecoveryCodes;
 use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Install\Paths;
 use OpenSendForm\Mail\DeliveryService;
 use OpenSendForm\Mail\MessageBuilder;
 use OpenSendForm\Mail\PhpMailerMailer;
@@ -34,10 +35,17 @@ if ($command === null) {
     exit(1);
 }
 
+// install:status only inspects files (config + lock); it must NOT connect to
+// or create a database, so it runs before the connect/migrate boot below.
+if ($command === 'install:status') {
+    exit(cmdInstallStatus());
+}
+
 try {
-    $config = Config::fromEnvironment();
-    $db = Database::connect($config->dbDsn());
-    (new MigrationRunner($db, dirname(__DIR__) . '/migrations'))->migrate();
+    $paths = Paths::production();
+    $config = Config::load($paths->configPath);
+    $db = Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
+    (new MigrationRunner($db, $paths->migrationsPath))->migrate();
 
     switch ($command) {
         case 'form:create':
@@ -420,6 +428,37 @@ function cmdSubmissionsList(Database $db, array $args): int
 }
 
 /**
+ * install:status — report whether the app is installed, without touching the
+ * database. Prints the config file's presence and, when the lock exists, its
+ * recorded install timestamp and version. Never prints any secret.
+ */
+function cmdInstallStatus(): int
+{
+    $paths = Paths::production();
+
+    $configPresent = is_file($paths->configPath);
+    $lockPresent = is_file($paths->lockPath);
+    $installed = $configPresent && $lockPresent;
+
+    fwrite(STDOUT, 'Status:      ' . ($installed ? 'installed' : 'NOT installed') . "\n");
+    fwrite(STDOUT, 'Config file: ' . ($configPresent ? 'present' : 'missing')
+        . ' (' . $paths->configPath . ")\n");
+    fwrite(STDOUT, 'Lock file:   ' . ($lockPresent ? 'present' : 'missing')
+        . ' (' . $paths->lockPath . ")\n");
+
+    if ($lockPresent) {
+        $raw = (string) @file_get_contents($paths->lockPath);
+        $meta = json_decode($raw, true);
+        if (is_array($meta)) {
+            fwrite(STDOUT, 'Installed:   ' . (string) ($meta['installed_at'] ?? 'unknown') . " UTC\n");
+            fwrite(STDOUT, 'Version:     ' . (string) ($meta['version'] ?? 'unknown') . "\n");
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Assemble a DeliveryService from the configured SMTP transport.
  */
 function buildDeliveryService(Database $db, Config $config): DeliveryService
@@ -450,6 +489,7 @@ function usage(): string
       bin/osf mail:retry
       bin/osf mail:test --to=ADDRESS
       bin/osf submissions:list [--status=STATUS]
+      bin/osf install:status
 
     Notes:
       --origin may be repeated to allow more than one origin.
@@ -461,6 +501,8 @@ function usage(): string
       mail:retry re-sends failed submissions whose backoff has elapsed
         (intended for a cPanel cron entry); it always exits 0.
       submissions:list shows metadata only — never submitted content.
+      install:status reports whether the browser installer has run (config +
+        lock files); it never connects to or creates a database.
 
     TXT;
 }
