@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (fix/5b-ux-defects, Claude Code)
+Last updated: 2026-08-25 (feature/increment-5c-account, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end and RELAYS BY EMAIL.
@@ -17,7 +17,11 @@ segmented inputs, recovery-code copy/download). A follow-up patch
 (fix/5b-ux-defects, this sprint) fixed field-tested UX defects on the TOTP
 login screen: a styled/prominent error alert and a same-field recovery-code
 toggle, plus a regression test guarding every admin screen against shipping
-unstyled. Test suite green (268 tests). CI runs it on every PR/push.
+unstyled. Increment 5c added ADMIN ACCOUNT MANAGEMENT + 2FA LIFECYCLE UX:
+the single-tenant admin model made explicit (is_active flag, deactivation in
+place of deletion), a self-service account screen, an admins roster with a
+last-active guard, a dashboard 2FA nudge, and a full 2FA disable flow. Test
+suite green (296 tests). CI runs it on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -115,6 +119,38 @@ relayed by authenticated SMTP to the site owner.
   `osf-flash osf-flash--error` class the other TOTP screens already used
   (previously login-time errors were unstyled plain text).
 
+## Admin account mgmt + 2FA lifecycle (Increment 5c) — this sprint
+- SINGLE-TENANT model, now explicit + documented: every admin co-operates on
+  one installation and sees all forms/submissions; no roles/permissions. No
+  account deletion — retirement is deactivation.
+- Migration 008 adds `admins.is_active INTEGER NOT NULL DEFAULT 1`.
+  `AdminRepository` gains `listAll/countActive/setActive/updateDisplayName/
+  updateEmail` and hydrates `is_active`. `AuthService`: an inactive admin is
+  refused login with the SAME generic Invalid outcome (no status disclosure),
+  and `currentAdmin()` invalidates a live session for a now-inactive admin on
+  its next request.
+- `Admin\AccountController` + `account.php` (nav "Account" link replaces the
+  bare name): change display name (CSRF only); change email (current password
+  + validation + uniqueness); change password (current password + new ≥ 12
+  twice, session id regenerated on success). All CSRF POSTs, flash feedback.
+- `Admin\AdminsController` + `admins.php`: roster (email, name, 2FA badge,
+  active badge, last login); create admin (initial password ≥ 12, guidance to
+  change after first login); deactivate/reactivate. GUARD (server-enforced +
+  button hidden): the last remaining ACTIVE admin can never be deactivated,
+  including self-deactivation when last active. No delete.
+- 2FA nudge: `AdminController::dashboard` sets `showNudge` when TOTP off and
+  not dismissed this session; `dismissNudge` (CSRF POST) sets the session
+  flag. Banner in `dashboard.php`.
+- 2FA disable: `AdminController::disableTotp` on the enabled totp/setup view —
+  current password AND current TOTP code required; clears totp_secret/
+  totp_enabled/recovery_codes, flashes, re-arms the nudge (removes dismiss
+  flag). Separated `.osf-danger-zone` section in `totp_setup.php`.
+- Recovery UX: login `totp.php` states "Enter ONE of your recovery codes" +
+  10-char hint; `recovery_codes.php` renders codes one-per-line in a
+  monospace `.osf-recovery-block` (`<pre>`, copy-all preserves line breaks)
+  and says each works exactly once; the regenerate-confirm input now uses the
+  same `data-totp-code` six-box enhancement as login (no divergent markup).
+
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene → form lookup by URL key → origin allowlist
 → per-IP then per-form rate limits → honeypot → token → Turnstile (optional)
@@ -122,19 +158,19 @@ method/body size → field hygiene → form lookup by URL key → origin allowli
 Locked by SubmitPipelineOrderTest.
 
 ## What exists now
-Increments 0–5a as above, plus 5b: `src/Admin/{Flash,AdminView,FormsController,
-SubmissionsController}.php`, `templates/admin/{_nav,_flash,forms_list,
-form_edit,submissions}.php` (+ reworked layout/dashboard/totp/totp_setup/
-recovery_codes), `public/assets/{admin.css,theme.js,admin.js,vendor/*}`,
-FormRepository/SubmissionRepository query additions, the CSP header, and
-`tests/Admin/AdminUiTest.php`. Only hard Composer dep remains
+Increments 0–5b as before, plus 5c: `migrations/008_admins_is_active.sql`;
+`src/Admin/{AccountController,AdminsController}.php`; `templates/admin/{account,
+admins}.php` (+ reworked _nav/dashboard/totp/totp_setup/recovery_codes);
+`AdminRepository`/`AuthService`/`AdminController` additions; `.osf-nudge/
+.osf-danger-zone/.osf-recovery-block` in admin.css; and
+`tests/Admin/AccountAdminsHttpTest.php`. Only hard Composer dep remains
 phpmailer/phpmailer ^6. Two vendored front-end assets (Pico, qrcode).
 
 ## Known gaps / not built (by design this sprint)
 - Installer, embed snippet/JS (incl. Turnstile widget rendering), synthetic
   monitoring, packaging — later increments.
-- Password change/reset screens, admin user-management UI, remember-me —
-  out of scope for 5b.
+- Password RESET by email, roles/permissions, account deletion, audit log,
+  remember-me — out of scope for 5c.
 - Disposable-domain blocklist, trusted-proxy IP handling, DKIM/SPF guidance.
 - CurlTurnstileVerifier's real curl and NativeSession's real $_SESSION path
   remain un-unit-tested (network/globals); covered via fakes.
@@ -143,17 +179,15 @@ phpmailer/phpmailer ^6. Two vendored front-end assets (Pico, qrcode).
 
 ## Open items
 - QUESTIONS.md: all prior items RESOLVED; no new questions this sprint.
-- Defect 3 from the fix/5b-ux-defects field-test report ("forms list
-  renders unstyled") did not reproduce on inspection — forms_list.php
-  already goes through the same layout/assets as every other admin screen.
-  `AdminUiTest::testEveryAdminScreenReferencesPicoCss()` now guards this
-  going forward regardless of the original cause.
-- Increment 6 (browser installer + environment autodetection) next.
+- Increment 6 (browser installer + environment autodetection) next; the
+  "first admin from the installer" referenced by the Admins screen/README
+  lands there (CLI `admin:create` is the interim path).
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Submission pipeline. 3. SMTP relay. 4. Turnstile.
 5a. Admin auth. — ALL DONE
 5b. Admin design system + form/submission CRUD screens. — DONE
+5c. Admin account management + 2FA lifecycle UX. — DONE
 6. Browser installer + environment autodetection.
 7. Embed snippet + JS.
 8. Synthetic monitoring + alerting.
