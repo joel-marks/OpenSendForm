@@ -31,6 +31,23 @@ use function OpenSendForm\Admin\statusBadgeClass;
     </div>
 <?php endif; ?>
 
+<?php if (($showMailNudge ?? false) === true): ?>
+    <?php /* Second dismissible nudge, mirroring the 2FA one: email sending is
+             off, so submissions are saved but not delivered. Points at the
+             mail-setup wizard. Returns if sending is turned off again. */ ?>
+    <div class="osf-flash osf-flash--info osf-nudge" role="note">
+        <span>
+            <strong>Email sending is not set up yet.</strong>
+            Submissions are being saved but not emailed to you.
+            <a href="/admin/mail">Set up email now</a>.
+        </span>
+        <form method="post" action="/admin/nudge/mail/dismiss" class="osf-inline-form">
+            <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
+            <button type="submit" class="secondary outline">Dismiss</button>
+        </form>
+    </div>
+<?php endif; ?>
+
 <section class="osf-stats">
     <article class="osf-stat">
         <div class="osf-stat-value"><?= h((string) $activeForms) ?></div>

@@ -30,18 +30,21 @@ $driver = $driver === 'mysql' ? 'mysql' : 'sqlite';
     <fieldset>
         <legend><strong>Database type</strong></legend>
         <label>
-            <input type="radio" name="db_driver" value="sqlite"
+            <input type="radio" name="db_driver" value="sqlite" data-db-driver
                    <?= $driver === 'sqlite' ? 'checked' : '' ?>>
             Built-in database (SQLite) — recommended, nothing to set up.
         </label>
         <label>
-            <input type="radio" name="db_driver" value="mysql"
+            <input type="radio" name="db_driver" value="mysql" data-db-driver
                    <?= $driver === 'mysql' ? 'checked' : '' ?>>
             MySQL database — only if your host told you to use one.
         </label>
     </fieldset>
 
-    <section>
+    <?php /* Visible by default so it works with JavaScript OFF (the current
+             always-visible layout). install.js hides it while SQLite is
+             selected and shows it when MySQL is chosen. */ ?>
+    <section data-mysql-details>
         <h2>MySQL details</h2>
         <p><small>Fill these in only if you chose MySQL above. You create a
             database (and its username and password) in cPanel under

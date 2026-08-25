@@ -34,6 +34,9 @@ final class AdminController
     /** Session flag: the per-session dismissal of the 2FA enrolment nudge. */
     private const SESSION_NUDGE_DISMISSED = 'admin.nudge_dismissed';
 
+    /** Session flag: the per-session dismissal of the email-setup nudge. */
+    private const SESSION_MAIL_NUDGE_DISMISSED = 'admin.mail_nudge_dismissed';
+
     // --- Login ------------------------------------------------------------
 
     /**
@@ -227,11 +230,17 @@ final class AdminController
         $totpEnabled = (int) $admin['totp_enabled'] === 1;
         $nudgeDismissed = self::session($c)->get(self::SESSION_NUDGE_DISMISSED) === true;
 
+        $mailEnabled = self::config($c)->mailEnabled();
+        $mailNudgeDismissed = self::session($c)->get(self::SESSION_MAIL_NUDGE_DISMISSED) === true;
+
         return AdminView::renderPage($c, $response, 'dashboard', [
             'title'        => 'Dashboard',
             'totpEnabled'  => $totpEnabled,
             // Nudge shows only when 2FA is off and the admin has not dismissed
             'showNudge'    => !$totpEnabled && !$nudgeDismissed,
+            // Mirror the 2FA nudge for email: shown while sending is off and the
+            // admin has not dismissed it this session.
+            'showMailNudge' => !$mailEnabled && !$mailNudgeDismissed,
             'activeForms'  => $forms->countActive(),
             'todayCount'   => $submissions->countSince($todayStart),
             'failedCount'  => $submissions->countByStatus('failed'),
@@ -253,6 +262,24 @@ final class AdminController
         $data = self::formData($request);
         if (self::csrf($c)->validate($data['_csrf'] ?? null)) {
             self::session($c)->set(self::SESSION_NUDGE_DISMISSED, true);
+        }
+
+        return self::redirect($response, '/admin');
+    }
+
+    /**
+     * POST /admin/nudge/mail/dismiss — dismiss the email-setup nudge for the
+     * rest of this session (mirrors dismissNudge). A no-op on a bad CSRF token;
+     * either way returns to the dashboard.
+     */
+    public static function dismissMailNudge(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $data = self::formData($request);
+        if (self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::session($c)->set(self::SESSION_MAIL_NUDGE_DISMISSED, true);
         }
 
         return self::redirect($response, '/admin');

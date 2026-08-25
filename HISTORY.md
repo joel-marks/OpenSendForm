@@ -759,3 +759,83 @@
   step rather than an implicit redirect; and an OSF_BASE_DIR override on
   `Paths::production()` to keep install:status testable and allow relocating
   var/. Neither changes public API behaviour.
+
+## 2026-08-25 — Increment 6b: mail-setup wizard (SMTP + deliverability) + polish
+- Branch: feature/increment-6b-mail-wizard, based on
+  feature/increment-6a-installer (NOT main). 6a is not yet merged to main, and
+  6b depends on its atomic config writer, `Config::load/fromFile`, DB_USER/PASS
+  and the installer done screen; branching from main would have dropped all of
+  that and broken task 4. Logged to QUESTIONS.md (Increment 6b item 1) as a
+  merge-order flag. No new Composer dependencies (authorised: none).
+- DNS seam: `Mail\DnsResolver` (TXT-only interface), `Mail\SystemDnsResolver`
+  (dns_get_record, `@`-suppressed so an offline host yields [] not an error),
+  and `tests/Support/FakeDnsResolver` (scriptable, never touches the network).
+- `Mail\DeliverabilityChecker` (pure; over the resolver): checks the From
+  address's domain for SPF (TXT `^v=spf1`), DKIM (`{selector}._domainkey`,
+  matched on `v=DKIM1`/`p=`) and DMARC (`_dmarc` `^v=DMARC1`). Each result is a
+  stable array (state, ok/amber, found record, recommended copy-paste record,
+  one-line explain, where-to-add). A TXT that exists but lacks the version tag
+  reads as absent (the "malformed" case). Recommendations: SPF seeds an
+  `include:` from the SMTP host's registrable domain (last two labels; omitted
+  for localhost/IP/single-label); DMARC seeds `rua=mailto:` the admin; DKIM has
+  no synthesizable value (the host supplies the key) so only the record name is
+  shown. `domainOf()` is a public static helper (used by the CLI too).
+- Config write-back: `Install\ConfigWriter` reads the current var/config.php
+  array, merges the changed keys over it (untouched keys — APP_SECRET, DB_* —
+  preserved) and writes atomically (temp file in the same dir, chmod 0600,
+  rename). `currentFileValues()`/`fileValue()` expose the stored file layer for
+  the keep-existing-password rule and env-shadow detection. Env still overrides
+  the file at load (Config::load precedence unchanged, re-asserted by a test).
+- `Admin\MailController` + `templates/admin/mail.php` at `/admin/mail` (nav
+  "Email"): (1) settings form (host/port/encryption[none/starttls/smtps with a
+  plain line each]/user/password + From address/name + MAIL_ENABLED), validated
+  (valid From email, non-empty From name, port 1–65535, host required to enable)
+  and re-rendered inline on failure with values preserved (never the password).
+  Password is WRITE-ONLY: blank keeps the stored FILE value; the stored secret is
+  never rendered (a set/not-set hint shows). An env-shadow notice names any
+  setting whose stored value the environment is overriding. (2) Test send
+  (POST /mail/test) via the container `MailerInterface` on the SAVED config,
+  recipient defaulting to the logged-in admin; success/failure flashed, the
+  error sanitised (control chars collapsed) and truncated to 300 chars; a
+  success while sending is off unlocks a one-click "Enable sending now"
+  (POST /mail/enable → MAIL_ENABLED=1). (3) Deliverability section, keyed on the
+  From domain, with a re-checkable DKIM selector (GET form), green/amber states,
+  the exact record + a copy button (reusing the shared `[data-copy]`) and one
+  sentence on where to add it.
+- Wiring: AppFactory gains a 9th `?DnsResolver` param (defaults SystemDnsResolver)
+  and registers `MailerInterface` (the injected fake, else a PhpMailerMailer over
+  current Config — always available so a test can be sent while sending is off),
+  `Install\ConfigWriter` (on `Paths::configPath`) and `DeliverabilityChecker`.
+  AdminRoutes adds the four mail routes and `/nudge/mail/dismiss`.
+- Handoff: installer `done.php` links `/admin/mail`; the dashboard shows a
+  second dismissible nudge "Email sending is not set up yet" (mirrors the 2FA
+  nudge) whenever MAIL_ENABLED is off, via `AdminController::dismissMailNudge`
+  and a per-session flag.
+- Installer polish (field-test finding): `/install/database`'s MySQL section is
+  now `<section data-mysql-details>` (still visible with JS off), hidden by the
+  new `public/assets/install.js` while the SQLite radio (`data-db-driver`) is
+  selected and shown for MySQL; the install layout loads the script.
+- CLI: `bin/osf mail:status` prints the mail config state (sending on/off, host
+  set?, port, encryption, auth present?, From address — never a secret) then runs
+  live SPF/DKIM/DMARC lookups for the From domain (labelled live; skips when the
+  domain is unusable or the resolver is offline).
+- Tests (+45, 381 total; 2401 assertions): `DeliverabilityCheckerTest`
+  (present/absent/malformed for each record, recommendation text, selector
+  normalisation, invalid From); `ConfigWriterTest` (merge/preserve, load-back,
+  keep-password, env-still-wins, unwritable-dir); `MailWizardHttpTest` (save
+  round-trip, keep/replace password, validation, password-never-rendered,
+  env-shadow notice, test-send success/default-recipient/failure/invalid,
+  enable-now, deliverability states + selector re-check + invalid-From prompt,
+  dashboard banner shown/dismiss/absent-when-enabled, nav link);
+  `InstallerDatabaseToggleTest` (toggle hooks present, no-JS visible, JS + layout
+  wiring); `CliMailStatusTest` (config-state output, graceful domain skip, no
+  secrets). `InstallerHttpTest` done-screen gains a `/admin/mail` link assertion.
+  Full suite green. Also smoke-tested for real: `mail:status` (live DNS) and a
+  `mail:test` delivering to the dev Mailpit.
+- Docs: README gained a "Setting up email" end-user section (the three parts,
+  why SPF/DKIM/DMARC matter in three sentences, the test email as proof) and an
+  Email nav entry; the Installing note dropped the "wizard lands later" caveat.
+  CONTEXT.md overwritten (6b section; ~150 lines), this HISTORY entry appended,
+  QUESTIONS.md gained the branch/merge-order flag.
+- Deviations from prompt: branch based on 6a rather than main (necessary; see
+  above and QUESTIONS.md). No functional deviations otherwise.

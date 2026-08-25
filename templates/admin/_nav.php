@@ -16,6 +16,7 @@ $link = static function (string $key, string $href, string $label) use ($active)
         <li><?= $link('dashboard', '/admin', 'Dashboard') ?></li>
         <li><?= $link('forms', '/admin/forms', 'Forms') ?></li>
         <li><?= $link('submissions', '/admin/submissions', 'Submissions') ?></li>
+        <li><?= $link('mail', '/admin/mail', 'Email') ?></li>
         <li><?= $link('admins', '/admin/admins', 'Admins') ?></li>
         <li>
             <button type="button" class="osf-theme-toggle" data-theme-toggle

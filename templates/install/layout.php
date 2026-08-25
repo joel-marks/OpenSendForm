@@ -20,5 +20,6 @@
     <?= $content /* already-escaped view output */ ?>
 </main>
 <script src="/assets/admin.js" defer></script>
+<script src="/assets/install.js" defer></script>
 </body>
 </html>

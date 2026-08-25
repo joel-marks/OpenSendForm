@@ -10,9 +10,11 @@ use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
 use OpenSendForm\Install\Paths;
+use OpenSendForm\Mail\DeliverabilityChecker;
 use OpenSendForm\Mail\DeliveryService;
 use OpenSendForm\Mail\MessageBuilder;
 use OpenSendForm\Mail\PhpMailerMailer;
+use OpenSendForm\Mail\SystemDnsResolver;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
 use OpenSendForm\Submission\SubmissionRepository;
@@ -64,6 +66,8 @@ try {
             exit(cmdMailRetry($db, $config));
         case 'mail:test':
             exit(cmdMailTest($config, $args));
+        case 'mail:status':
+            exit(cmdMailStatus($config));
         case 'submissions:list':
             exit(cmdSubmissionsList($db, $args));
         default:
@@ -392,6 +396,53 @@ function cmdMailTest(Config $config, array $args): int
 }
 
 /**
+ * mail:status — print the current mail configuration state (never a secret) and
+ * run the three deliverability DNS checks for the configured From domain.
+ *
+ * The DNS lookups are LIVE (they use the system resolver). Offline, the resolver
+ * returns nothing and each record is simply reported as not found — the command
+ * still completes and exits 0.
+ */
+function cmdMailStatus(Config $config): int
+{
+    $host = $config->smtpHost();
+    $from = $config->mailFromAddress();
+
+    fwrite(STDOUT, "Mail configuration\n");
+    fwrite(STDOUT, '  Sending:       ' . ($config->mailEnabled() ? 'ENABLED' : 'off') . "\n");
+    fwrite(STDOUT, '  SMTP host:     ' . ($host !== '' ? 'set (' . $host . ')' : 'not set') . "\n");
+    fwrite(STDOUT, '  SMTP port:     ' . $config->smtpPort() . "\n");
+    fwrite(STDOUT, '  Encryption:    ' . $config->smtpEncryption() . "\n");
+    fwrite(STDOUT, '  Auth:          ' . ($config->smtpUser() !== '' ? 'username set' : 'no username') . "\n");
+    fwrite(STDOUT, '  From address:  ' . ($from !== '' ? $from : '(none)') . "\n");
+
+    $domain = DeliverabilityChecker::domainOf($from);
+    if ($domain === '') {
+        fwrite(STDOUT, "\nNo valid From domain, so deliverability records cannot be checked.\n");
+        return 0;
+    }
+
+    fwrite(STDOUT, "\nDeliverability for {$domain} (live DNS lookups):\n");
+
+    $checker = new DeliverabilityChecker(new SystemDnsResolver());
+    // Seed the recommended DMARC report mailbox with the From address (the CLI
+    // has no logged-in admin to default to).
+    $report = $checker->check($from, $from);
+
+    foreach (['spf', 'dkim', 'dmarc'] as $key) {
+        $check = $report[$key];
+        $mark = $check['ok'] ? 'OK ' : '-- ';
+        $state = $check['ok'] ? 'published' : 'not found';
+        fwrite(STDOUT, sprintf("  [%s] %-5s %s\n", $mark, strtoupper($key), $state));
+        if (!$check['ok'] && (string) $check['recommended'] !== '') {
+            fwrite(STDOUT, '        add TXT ' . $check['name'] . ' → ' . $check['recommended'] . "\n");
+        }
+    }
+
+    return 0;
+}
+
+/**
  * submissions:list [--status=X] — metadata only; never any submitted content.
  */
 function cmdSubmissionsList(Database $db, array $args): int
@@ -488,6 +539,7 @@ function usage(): string
       bin/osf admin:create --email=EMAIL --name=NAME
       bin/osf mail:retry
       bin/osf mail:test --to=ADDRESS
+      bin/osf mail:status
       bin/osf submissions:list [--status=STATUS]
       bin/osf install:status
 
@@ -500,6 +552,8 @@ function usage(): string
         TTY is available); it must be at least 12 characters.
       mail:retry re-sends failed submissions whose backoff has elapsed
         (intended for a cPanel cron entry); it always exits 0.
+      mail:status prints the mail config state (no secrets) and runs live
+        SPF/DKIM/DMARC DNS lookups for the From domain (skips when offline).
       submissions:list shows metadata only — never submitted content.
       install:status reports whether the browser installer has run (config +
         lock files); it never connects to or creates a database.

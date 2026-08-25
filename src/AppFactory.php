@@ -19,14 +19,19 @@ use OpenSendForm\Auth\Totp;
 use OpenSendForm\Clock\Clock;
 use OpenSendForm\Clock\SystemClock;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Install\ConfigWriter;
 use OpenSendForm\Install\InstallerService;
 use OpenSendForm\Install\InstallRoutes;
 use OpenSendForm\Install\InstallStateMiddleware;
 use OpenSendForm\Install\Paths;
 use OpenSendForm\Install\PdoDbConnector;
+use OpenSendForm\Mail\DeliverabilityChecker;
 use OpenSendForm\Mail\DeliveryService;
+use OpenSendForm\Mail\DnsResolver;
 use OpenSendForm\Mail\MailerInterface;
 use OpenSendForm\Mail\MessageBuilder;
+use OpenSendForm\Mail\PhpMailerMailer;
+use OpenSendForm\Mail\SystemDnsResolver;
 use OpenSendForm\RateLimit\RateLimiter;
 use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Storage\Database;
@@ -80,6 +85,10 @@ final class AppFactory
      *                                behaves as installed) — the default the
      *                                test suite relies on. public/index.php
      *                                passes Paths::production() to switch it on.
+     * @param DnsResolver|null $mailDns Optional TXT resolver for the mail
+     *                                deliverability checker; defaults to the real
+     *                                system resolver. Tests inject a scriptable
+     *                                fake so no lookup ever hits the network.
      */
     public static function create(
         ?Config $config = null,
@@ -89,7 +98,8 @@ final class AppFactory
         ?MailerInterface $mailer = null,
         ?TurnstileVerifierInterface $turnstile = null,
         ?SessionInterface $session = null,
-        ?Paths $installPaths = null
+        ?Paths $installPaths = null,
+        ?DnsResolver $mailDns = null
     ): App {
         $config ??= Config::fromEnvironment();
         $db ??= Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
@@ -97,12 +107,13 @@ final class AppFactory
         $clock ??= new SystemClock();
         $turnstile ??= new CurlTurnstileVerifier();
         $session ??= new NativeSession();
+        $mailDns ??= new SystemDnsResolver();
 
         // Gating is opt-in: enabled only when explicit install paths are given.
         $gateInstall = $installPaths !== null;
         $installPaths ??= Paths::production();
 
-        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile, $session, $installPaths);
+        $container = self::buildContainer($config, $db, $dns, $clock, $mailer, $turnstile, $session, $installPaths, $mailDns);
 
         SlimAppFactory::setContainer($container);
         $app = SlimAppFactory::create();
@@ -131,7 +142,8 @@ final class AppFactory
         ?MailerInterface $mailer,
         TurnstileVerifierInterface $turnstile,
         SessionInterface $session,
-        Paths $installPaths
+        Paths $installPaths,
+        DnsResolver $mailDns
     ): Container {
         $container = new Container();
 
@@ -169,6 +181,16 @@ final class AppFactory
             $container->set(DeliveryService::class, $delivery);
         }
         $container->set(TurnstileVerifierInterface::class, $turnstile);
+
+        // A transport for the admin mail wizard's test send. It always uses the
+        // CURRENTLY SAVED config (fixed at build), independent of whether the
+        // delivery pipeline is wired, so a test can be sent while sending is
+        // still off. Tests inject a fake via the $mailer argument.
+        $container->set(MailerInterface::class, $mailer ?? new PhpMailerMailer($config));
+        // TXT resolver + deliverability checker for the SPF/DKIM/DMARC section.
+        $container->set(DnsResolver::class, $mailDns);
+        $container->set(DeliverabilityChecker::class, new DeliverabilityChecker($mailDns));
+
         $container->set(
             SubmitPipeline::class,
             SubmitPipeline::create($config, $forms, $limiter, $tokens, $dns, $submissions, $delivery, $turnstile)
@@ -205,6 +227,9 @@ final class AppFactory
             InstallerService::class,
             new InstallerService($installPaths, new PdoDbConnector(), $hasher, $recovery)
         );
+        // The admin mail wizard writes changed settings back to the same config
+        // file the installer produced, atomically (temp+rename, 0600).
+        $container->set(ConfigWriter::class, new ConfigWriter($installPaths->configPath));
         $container->set(
             'install.renderer',
             new TemplateRenderer(dirname(__DIR__) . '/templates/install')

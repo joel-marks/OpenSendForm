@@ -1,5 +1,20 @@
 # Open questions for the architect
 
+## Increment 6b
+
+1. **Branch base: 6b was built on `feature/increment-6a-installer`, not `main`.
+   FLAG FOR MERGE ORDER (not blocking).**
+   The 6b task prompt said to branch from `main`, but Increment 6a (the browser
+   installer engine) has not been merged to `main` yet — its `src/Install/*`,
+   the atomic config writer, `Config::load/fromFile`, `DB_USER/DB_PASS` and the
+   installer done screen live only on the 6a branch. Task 4 (done-screen +
+   dashboard handoff) and the "config write-back via the existing atomic writer"
+   requirement both depend on 6a. Branching 6b from `main` would have dropped all
+   of that. Decision: branch 6b off `feature/increment-6a-installer`. Merge 6a
+   first, then 6b (or merge 6b, which contains 6a's commits, as one). No code
+   question here — just merge-order awareness.
+
+
 ## Increment 2
 
 1. **/v1/submit CORS preflight origin decision. RESOLVED (2026-08-24).**
