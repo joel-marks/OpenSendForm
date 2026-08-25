@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-24 (feature/increment-5b-admin-ui, Claude Code)
+Last updated: 2026-08-24 (fix/5b-ux-defects, Claude Code)
 
 ## Status
 The public submission endpoint is live end-to-end and RELAYS BY EMAIL.
@@ -10,11 +10,14 @@ ordered validation/abuse pipeline. Submissions that pass are stored, then a
 single in-request SMTP send is attempted; failures are retried by an
 operator cron. Increment 4 added optional per-form Cloudflare Turnstile.
 Increment 5a added the ADMIN AUTHENTICATION STACK (argon2id, optional TOTP
-2FA + recovery codes, CSRF, session hardening). This sprint (Increment 5b)
-adds the ADMIN DESIGN SYSTEM + CRUD SCREENS: Pico.css-based light/dark UI,
-dashboard, forms CRUD, submissions list with retry, and the TOTP enrolment
-UX (QR, segmented inputs, recovery-code copy/download). Test suite green
-(265 tests). CI runs it on every PR/push.
+2FA + recovery codes, CSRF, session hardening). Increment 5b added the
+ADMIN DESIGN SYSTEM + CRUD SCREENS: Pico.css-based light/dark UI, dashboard,
+forms CRUD, submissions list with retry, and the TOTP enrolment UX (QR,
+segmented inputs, recovery-code copy/download). A follow-up patch
+(fix/5b-ux-defects, this sprint) fixed field-tested UX defects on the TOTP
+login screen: a styled/prominent error alert and a same-field recovery-code
+toggle, plus a regression test guarding every admin screen against shipping
+unstyled. Test suite green (268 tests). CI runs it on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared
@@ -102,6 +105,15 @@ relayed by authenticated SMTP to the site owner.
   plain input (degrade to one field); recovery screen has copy-all,
   download-.txt (Blob) and a "saved" checkbox gating continue (plain list
   without JS). AdminController renders these via AdminView (+ qrcode.js).
+  Login-time `/admin/totp` (fix/5b-ux-defects): ONE field (`name="code"`,
+  no length/pattern limits) serves both a TOTP code and a recovery code —
+  the no-JS fallback is that same plain input, not a second form. With JS,
+  `admin.js`'s `data-totp-recovery-toggle` attribute (set only on this
+  field, not on `totp_setup.php`'s enrolment field) adds a "Use a recovery
+  code instead" link that swaps the six boxes for the plain input in place
+  (same field, no auto-submit) and back. Errors render via the same
+  `osf-flash osf-flash--error` class the other TOTP screens already used
+  (previously login-time errors were unstyled plain text).
 
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene → form lookup by URL key → origin allowlist
@@ -131,6 +143,11 @@ phpmailer/phpmailer ^6. Two vendored front-end assets (Pico, qrcode).
 
 ## Open items
 - QUESTIONS.md: all prior items RESOLVED; no new questions this sprint.
+- Defect 3 from the fix/5b-ux-defects field-test report ("forms list
+  renders unstyled") did not reproduce on inspection — forms_list.php
+  already goes through the same layout/assets as every other admin screen.
+  `AdminUiTest::testEveryAdminScreenReferencesPicoCss()` now guards this
+  going forward regardless of the original cause.
 - Increment 6 (browser installer + environment autodetection) next.
 
 ## Planned increment sequence (subject to revision)

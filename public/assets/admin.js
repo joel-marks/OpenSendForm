@@ -8,10 +8,12 @@
  * passes untouched.
  *
  * Enhancements, each guarded by the presence of its target:
- *   [data-copy]            — copy the given text to the clipboard.
- *   [data-totp-code]       — replace a plain 6-digit input with six boxes.
- *   [data-qr]              — render an otpauth URI as an SVG QR (needs qrcode.js).
- *   [data-recovery-codes]  — copy-all / download-as-txt / "saved" gate.
+ *   [data-copy]                  — copy the given text to the clipboard.
+ *   [data-totp-code]             — replace a plain 6-digit input with six boxes.
+ *   [data-totp-recovery-toggle]  — also add a link that swaps the boxes for
+ *                                  the plain input, for a recovery code.
+ *   [data-qr]                    — render an otpauth URI as an SVG QR (needs qrcode.js).
+ *   [data-recovery-codes]        — copy-all / download-as-txt / "saved" gate.
  */
 (function () {
     'use strict';
@@ -94,7 +96,8 @@
             wrap.appendChild(box);
         }
 
-        input.parentNode.insertBefore(wrap, input);
+        var fieldP = input.parentNode;
+        fieldP.insertBefore(wrap, input);
 
         function sync() {
             var value = '';
@@ -164,6 +167,47 @@
 
         for (var b = 0; b < length; b++) {
             attach(b);
+        }
+
+        // Recovery-code fallback: the digit boxes only take one numeral each,
+        // so a 10-character alphanumeric recovery code cannot be typed into
+        // them. Swap them for the plain input itself (same name="code") on
+        // request, rather than adding a second field or form.
+        if (input.hasAttribute('data-totp-recovery-toggle')) {
+            var label = fieldP.querySelector('label');
+            var codeLabelText = label ? label.textContent : '';
+            var toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'osf-link-button';
+            toggle.textContent = 'Use a recovery code instead';
+            fieldP.parentNode.insertBefore(toggle, fieldP.nextSibling);
+
+            toggle.addEventListener('click', function (event) {
+                event.preventDefault();
+                var inRecoveryMode = input.getAttribute('type') === 'text';
+                if (inRecoveryMode) {
+                    input.setAttribute('type', 'hidden');
+                    input.value = '';
+                    for (var k = 0; k < length; k++) {
+                        boxes[k].value = '';
+                    }
+                    wrap.hidden = false;
+                    toggle.textContent = 'Use a recovery code instead';
+                    if (label) {
+                        label.textContent = codeLabelText;
+                    }
+                    boxes[0].focus();
+                } else {
+                    wrap.hidden = true;
+                    input.value = '';
+                    input.setAttribute('type', 'text');
+                    toggle.textContent = 'Use authenticator code instead';
+                    if (label) {
+                        label.textContent = 'Recovery code';
+                    }
+                    input.focus();
+                }
+            });
         }
 
         // Carry any server-preserved value into the boxes.

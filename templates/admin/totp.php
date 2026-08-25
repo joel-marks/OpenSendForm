@@ -1,34 +1,26 @@
 <?php use function OpenSendForm\Admin\h; ?>
 <h1>Two-factor authentication</h1>
 
-<p>Enter the 6-digit code from your authenticator app.</p>
+<p>Enter the 6-digit code from your authenticator app, or one of your
+   recovery codes if you've lost access to it.</p>
 
 <?php if (($error ?? '') !== ''): ?>
-    <p role="alert"><strong><?= h($error) ?></strong></p>
+    <p class="osf-flash osf-flash--error" role="alert"><strong><?= h($error) ?></strong></p>
 <?php endif; ?>
 
+<?php /* One field serves both a TOTP code and a recovery code (same name,
+         no length/pattern limits) so it works unchanged with JS off. With JS
+         on, admin.js upgrades it to six digit boxes and adds a toggle that
+         swaps back to this same plain input for a recovery code — see
+         data-totp-recovery-toggle in admin.js. */ ?>
 <form method="post" action="/admin/totp">
     <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
     <p>
         <label for="code">Authentication code</label><br>
-        <input type="text" id="code" name="code" inputmode="numeric"
-               autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
-               autofocus required data-totp-code>
+        <input type="text" id="code" name="code" autocomplete="one-time-code"
+               autofocus required data-totp-code data-totp-recovery-toggle>
     </p>
     <p>
         <button type="submit">Verify</button>
-    </p>
-</form>
-
-<h2>Lost your device?</h2>
-<p>Enter one of your one-time recovery codes instead. Each code works once.</p>
-<form method="post" action="/admin/totp">
-    <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-    <p>
-        <label for="recovery">Recovery code</label><br>
-        <input type="text" id="recovery" name="code" autocomplete="off">
-    </p>
-    <p>
-        <button type="submit">Use recovery code</button>
     </p>
 </form>

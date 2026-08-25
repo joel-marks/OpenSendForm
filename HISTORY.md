@@ -555,3 +555,66 @@
   bounds and the "keep secret on blank edit" convenience were in-scope
   UX decisions, not architecture questions).
 - Deviations from prompt: none.
+
+## 2026-08-24 — Follow-up patch: 5b UX defects (field testing)
+- Branch: fix/5b-ux-defects (off main, after PR #12).
+- Defect 1 — invalid TOTP code showed no visible error after the
+  segmented-box auto-submit re-render. Diagnosis: the error line was already
+  present in the HTML (`<p role="alert">`) but carried no styling, so it
+  blended into the page — inconsistent with `totp_setup.php` and
+  `recovery_codes.php`, which already used the `osf-flash osf-flash--error`
+  class for the same kind of message. Fix: `templates/admin/totp.php` now
+  reuses that existing class (no new CSS). Confirmed the segmented-box
+  enhancement already re-initialises correctly on the re-render (empty
+  boxes, focus on box 1) — it is a fresh full-page load each time, not an
+  in-place DOM patch, so `admin.js`'s `buildBoxes()` runs from scratch; the
+  server never echoes the failed code back into the input, so nothing to
+  reset. No JS change was needed for this half of the defect, only the
+  regression test.
+- Defect 2 — recovery codes (10-char alphanumeric) couldn't be typed into
+  the 6-digit segmented boxes with JS on. Ruling implemented: consolidated
+  `totp.php` from two forms (a boxed `code` field plus a separate unboxed
+  "Lost your device?" `code` field) to ONE form with ONE `name="code"`
+  field, with the `pattern="[0-9]*"`/`maxlength="6"`/`inputmode="numeric"`
+  restrictions removed so the bare field accepts either code type — this is
+  the "single plain input serves both cases" no-JS fallback the ruling
+  describes. `admin.js`'s `buildBoxes()` gained an opt-in
+  `data-totp-recovery-toggle` attribute (set only on this field, not on
+  `totp_setup.php`'s enrolment-confirmation field, where a recovery code
+  makes no sense): when present, a "Use a recovery code instead" link
+  toggles the same input between hidden-carrier-behind-six-boxes and a
+  plain visible text field (clearing values both ways, relabelling, no
+  auto-submit in text mode since box-only listeners never touch the plain
+  input), with a "Use authenticator code instead" link back. New
+  `.osf-link-button` style in `admin.css`.
+- Defect 3 — forms list page reported as rendering unstyled. Investigation:
+  built and ran the app end-to-end (PHP built-in server, real admin +
+  form), diffed the raw HTTP response against the dashboard, and found no
+  bypass — `FormsController::index()` already goes through the same
+  `AdminView::renderPage()` → `TemplateRenderer::render()` → `layout.php`
+  path as every other screen, with identical `pico.min.css`/`admin.css`
+  `<link>` tags, both assets serving 200 with the correct content type.
+  Could not reproduce a code-level defect (recorded here rather than
+  QUESTIONS.md since it isn't blocking — the required regression test
+  closes the gap regardless of root cause, which may have been a one-off
+  browser-cache artefact during the original field test). Added
+  `AdminUiTest::testEveryAdminScreenReferencesPicoCss()`, looping over
+  dashboard/forms-list/form-create/form-edit/submissions/totp-setup and
+  asserting each 200 response body references `/assets/vendor/pico.min.css`,
+  so a single unstyled admin page can never ship unnoticed again.
+- Tests (+3, 268 total; 1939 assertions): `AdminHttpTest` gained
+  `testInvalidTotpCodeShowsAlertRegion` (401 body contains the exact styled
+  `role="alert"` markup with "Invalid code."; the carrier input has no
+  leftover `value="000000"`) and
+  `testTotpRecoveryCodeFallbackMarkupAndSubmission` (GET body has
+  `data-totp-recovery-toggle` and no `maxlength="6"`/`pattern="[0-9]*"`;
+  POSTing a real recovery code through the single `code` field returns
+  302 → `/admin`). `AdminUiTest` gained the pico.min.css route-loop above.
+  Full suite green. Also manually verified live against the PHP built-in
+  server: enrolled TOTP, hit `/admin/totp` with a wrong code (saw the
+  styled alert), then signed in with a recovery code through the same
+  field (302 to `/admin`).
+- Docs: CONTEXT.md updated (TOTP UX + forms-list sections), this HISTORY
+  entry appended. QUESTIONS.md unchanged — defect 3's non-reproduction is
+  noted above, not a blocking open question.
+- Deviations from prompt: none.

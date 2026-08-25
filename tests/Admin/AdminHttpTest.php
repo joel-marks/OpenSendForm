@@ -181,6 +181,81 @@ final class AdminHttpTest extends TestCase
         self::assertStringContainsString('Too many attempts. Please try again later.', (string) $response->getBody());
     }
 
+    public function testInvalidTotpCodeShowsAlertRegion(): void
+    {
+        $admin = $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
+        $secret = $this->totp->generateSecret();
+        $this->admins->setTotp($admin['id'], $secret);
+        $this->admins->enableTotp($admin['id']);
+
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => 'boss@example.com',
+            'password' => self::PASSWORD,
+        ]);
+
+        $totpPage = $this->get('/admin/totp');
+        $response = $this->post('/admin/totp', [
+            '_csrf' => $this->csrfFrom($totpPage),
+            'code'  => '000000',
+        ]);
+
+        self::assertSame(401, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        self::assertStringContainsString(
+            '<p class="osf-flash osf-flash--error" role="alert"><strong>Invalid code.</strong></p>',
+            $body
+        );
+
+        // The segmented-box enhancement re-initialises fresh on this re-render:
+        // the carrier input has no leftover value for JS to redistribute.
+        self::assertMatchesRegularExpression('/id="code"[^>]*data-totp-code/', $body);
+        self::assertDoesNotMatchRegularExpression('/id="code"[^>]*value="000000"/', $body);
+    }
+
+    public function testTotpRecoveryCodeFallbackMarkupAndSubmission(): void
+    {
+        $admin = $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);
+        $secret = $this->totp->generateSecret();
+        $this->admins->setTotp($admin['id'], $secret);
+        $this->admins->enableTotp($admin['id']);
+
+        $hasher = new PasswordHasher(PASSWORD_BCRYPT);
+        $recovery = new RecoveryCodes($hasher);
+        $batch = $recovery->generate();
+        $this->admins->setRecoveryCodes($admin['id'], $batch['hashes']);
+        $recoveryCode = $batch['plain'][0];
+
+        $csrf = $this->csrfFrom($this->get('/admin/login'));
+        $this->post('/admin/login', [
+            '_csrf'    => $csrf,
+            'email'    => 'boss@example.com',
+            'password' => self::PASSWORD,
+        ]);
+
+        $totpPage = $this->get('/admin/totp');
+        $body = (string) $totpPage->getBody();
+
+        // The recovery-code toggle is reachable (JS swaps to this same plain
+        // field) and the field carries no length/pattern restriction that
+        // would block a 10-character alphanumeric recovery code — with JS
+        // off, this one field must accept either kind of code unchanged.
+        self::assertStringContainsString('data-totp-recovery-toggle', $body);
+        self::assertStringNotContainsString('maxlength="6"', $body);
+        self::assertStringNotContainsString('pattern="[0-9]*"', $body);
+        self::assertSame(1, substr_count($body, '<form method="post" action="/admin/totp">'));
+
+        // Submitting a recovery code through that same "code" field succeeds
+        // at the HTTP level, exactly as the plain no-JS fallback would.
+        $verify = $this->post('/admin/totp', [
+            '_csrf' => $this->csrfFrom($totpPage),
+            'code'  => $recoveryCode,
+        ]);
+        self::assertSame(302, $verify->getStatusCode());
+        self::assertSame('/admin', $verify->getHeaderLine('Location'));
+    }
+
     public function testExpiredPendingTotpRedirectsToLogin(): void
     {
         $admin = $this->admins->createAdmin('boss@example.com', 'The Boss', self::PASSWORD);

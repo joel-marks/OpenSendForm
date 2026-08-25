@@ -180,6 +180,21 @@
     pointer-events: none;
 }
 
+/* --- Link-styled button (e.g. the recovery-code mode toggle) ---------- */
+
+.osf-link-button {
+    display: inline-block;
+    width: auto;
+    margin: 0 0 1rem;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--pico-primary);
+    text-decoration: underline;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
 /* --- Segmented TOTP code inputs (progressive enhancement) ------------- */
 
 .osf-code-boxes {
