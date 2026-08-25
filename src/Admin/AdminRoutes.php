@@ -52,6 +52,8 @@ final class AdminRoutes
                 ->add($auth);
             $group->post('/nudge/dismiss', self::handler($container, [AdminController::class, 'dismissNudge']))
                 ->add($auth);
+            $group->post('/nudge/mail/dismiss', self::handler($container, [AdminController::class, 'dismissMailNudge']))
+                ->add($auth);
 
             // Account (self-service).
             $group->get('/account', self::handler($container, [AccountController::class, 'index']))
@@ -71,6 +73,16 @@ final class AdminRoutes
             $group->post('/admins/{id}/deactivate', self::handlerWithArgs($container, [AdminsController::class, 'deactivate']))
                 ->add($auth);
             $group->post('/admins/{id}/reactivate', self::handlerWithArgs($container, [AdminsController::class, 'reactivate']))
+                ->add($auth);
+
+            // Email (mail-setup wizard: SMTP + deliverability).
+            $group->get('/mail', self::handler($container, [MailController::class, 'index']))
+                ->add($auth);
+            $group->post('/mail', self::handler($container, [MailController::class, 'save']))
+                ->add($auth);
+            $group->post('/mail/test', self::handler($container, [MailController::class, 'test']))
+                ->add($auth);
+            $group->post('/mail/enable', self::handler($container, [MailController::class, 'enable']))
                 ->add($auth);
 
             // Forms CRUD.
