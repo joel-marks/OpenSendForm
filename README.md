@@ -147,6 +147,38 @@ enhancements (theme toggle, click-to-copy, QR code, segmented 2FA inputs).
   *Retry all due now* runs the whole due queue. The fields a visitor typed
   are never displayed (that content is the in-flight delivery payload; see
   the storage note above).
+- **Account** (`/admin/account`) — your own account: change your display
+  name, your email (requires your current password) and your password (current
+  password plus a new one, at least 12 characters, twice; your session id is
+  rotated on success). Reach it from your name in the top nav.
+- **Admins** (`/admin/admins`) — the admin roster (email, name, 2FA and active
+  badges, last login); add a new admin with an initial password; deactivate or
+  reactivate accounts.
+
+### Admin model
+
+OpenSendForm is **single-tenant**: an installation has one shared workspace and
+every administrator is a co-operator of it. All admins see all forms and all
+submissions — there are no roles, per-form permissions or ownership. This is by
+design; it keeps a self-hosted, single-site tool simple.
+
+- **The first admin** comes from the installer (a later increment) or, for
+  developers, from the CLI (`php bin/osf admin:create`, below). There is no
+  public sign-up.
+- **Adding admins** — any signed-in admin can create another from **Admins →
+  Add an admin**, setting an initial password (≥ 12 characters). Share it over
+  a secure channel and ask the new admin to change it from their **Account**
+  screen after first sign-in.
+- **Retiring admins** — accounts are never deleted (deferred by design);
+  instead they are **deactivated** from the Admins screen. A deactivated admin
+  can no longer sign in, and any live session they hold is invalidated on its
+  next request. Reactivate them the same way. A safety guard prevents
+  deactivating the **last remaining active admin** (including yourself), so an
+  installation can never lock itself out of its own admin area.
+- **Sensitive changes are re-authenticated** — changing an email or password,
+  or disabling 2FA, always requires the current password (and, for disabling
+  2FA, a current authenticator code). Every action is a CSRF-protected POST
+  with flash feedback.
 
 ### Theming
 
@@ -177,9 +209,15 @@ Two-factor authentication (TOTP) is optional and set up from the dashboard
 after signing in (**Set up two-factor authentication**): scan the QR code
 (rendered in-browser; the secret never leaves the page) or enter the key
 manually into an authenticator app, confirm with the 6-digit code, then save
-the one-time **recovery codes** shown once (copy or download them). With 2FA
-enabled, sign-in requires a current code (or a recovery code if you lose your
-device).
+the one-time **recovery codes** shown once (copy or download them; each works
+exactly once). With 2FA enabled, sign-in requires a current code (or a recovery
+code if you lose your device). While 2FA is off, the dashboard shows a
+per-session nudge to enable it (dismissible for the session).
+
+From the TOTP screen (`/admin/totp/setup`) you can **regenerate** your recovery
+codes (confirmed with a current code) or **disable** two-factor authentication
+entirely — disabling requires your current password *and* a current code, and
+clears the secret and all recovery codes.
 
 Forms can equally be provisioned from the CLI — see `php bin/osf form:create`
 and `php bin/osf form:turnstile` above — so scripted setup and the UI stay

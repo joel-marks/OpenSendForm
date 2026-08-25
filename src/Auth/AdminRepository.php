@@ -82,6 +82,80 @@ final class AdminRepository
     }
 
     /**
+     * Every admin, oldest first — the single-tenant admins list.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listAll(): array
+    {
+        $rows = $this->db->fetchAll('SELECT * FROM admins ORDER BY id ASC');
+
+        return array_map([$this, 'hydrate'], $rows);
+    }
+
+    /**
+     * How many admins are currently active. Used to enforce the guard that
+     * the last active admin can never be deactivated.
+     */
+    public function countActive(): int
+    {
+        $row = $this->db->fetchOne('SELECT COUNT(*) AS c FROM admins WHERE is_active = 1');
+
+        return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Activate or deactivate an admin. Returns true when a row was changed.
+     */
+    public function setActive(int $id, bool $active): bool
+    {
+        $this->db->execute(
+            'UPDATE admins SET is_active = :active, updated_at = :now WHERE id = :id',
+            ['active' => $active ? 1 : 0, 'now' => self::now(), 'id' => $id]
+        );
+
+        return $this->findById($id) !== null;
+    }
+
+    /**
+     * Replace an admin's display name (no re-authentication required).
+     *
+     * @throws InvalidArgumentException on an empty name.
+     */
+    public function updateDisplayName(int $id, string $displayName): void
+    {
+        $displayName = trim($displayName);
+        if ($displayName === '') {
+            throw new InvalidArgumentException('Admin display name must not be empty.');
+        }
+
+        $this->db->execute(
+            'UPDATE admins SET display_name = :name, updated_at = :now WHERE id = :id',
+            ['name' => $displayName, 'now' => self::now(), 'id' => $id]
+        );
+    }
+
+    /**
+     * Replace an admin's email after validating and normalising it. Uniqueness
+     * is the caller's concern (checked against findByEmail) so a friendly
+     * message can be shown; the UNIQUE index is the backstop.
+     *
+     * @throws InvalidArgumentException on an invalid email.
+     */
+    public function updateEmail(int $id, string $email): void
+    {
+        $email = strtolower(trim($email));
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException("Invalid admin email: {$email}");
+        }
+
+        $this->db->execute(
+            'UPDATE admins SET email = :email, updated_at = :now WHERE id = :id',
+            ['email' => $email, 'now' => self::now(), 'id' => $id]
+        );
+    }
+
+    /**
      * Find an admin by email (case-insensitive), or null.
      *
      * @return array<string, mixed>|null
@@ -235,6 +309,7 @@ final class AdminRepository
             'totp_enabled'   => (int) $row['totp_enabled'],
             'recovery_codes' => isset($row['recovery_codes']) && $row['recovery_codes'] !== null
                 ? (string) $row['recovery_codes'] : null,
+            'is_active'      => (int) ($row['is_active'] ?? 1),
             'created_at'     => (string) $row['created_at'],
             'updated_at'     => (string) $row['updated_at'],
             'last_login_at'  => isset($row['last_login_at']) && $row['last_login_at'] !== null

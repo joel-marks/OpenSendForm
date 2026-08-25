@@ -542,6 +542,8 @@ final class AdminUiTest extends TestCase
             'form edit'     => '/admin/forms/' . $form['id'] . '/edit',
             'submissions'   => '/admin/submissions',
             'totp setup'    => '/admin/totp/setup',
+            'account'       => '/admin/account',
+            'admins'        => '/admin/admins',
         ];
 
         foreach ($routes as $label => $route) {

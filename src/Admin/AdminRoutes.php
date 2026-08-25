@@ -48,6 +48,30 @@ final class AdminRoutes
                 '/totp/recovery-codes/regenerate',
                 self::handler($container, [AdminController::class, 'regenerateRecoveryCodes'])
             )->add($auth);
+            $group->post('/totp/disable', self::handler($container, [AdminController::class, 'disableTotp']))
+                ->add($auth);
+            $group->post('/nudge/dismiss', self::handler($container, [AdminController::class, 'dismissNudge']))
+                ->add($auth);
+
+            // Account (self-service).
+            $group->get('/account', self::handler($container, [AccountController::class, 'index']))
+                ->add($auth);
+            $group->post('/account/name', self::handler($container, [AccountController::class, 'updateName']))
+                ->add($auth);
+            $group->post('/account/email', self::handler($container, [AccountController::class, 'updateEmail']))
+                ->add($auth);
+            $group->post('/account/password', self::handler($container, [AccountController::class, 'updatePassword']))
+                ->add($auth);
+
+            // Admins management.
+            $group->get('/admins', self::handler($container, [AdminsController::class, 'index']))
+                ->add($auth);
+            $group->post('/admins', self::handler($container, [AdminsController::class, 'create']))
+                ->add($auth);
+            $group->post('/admins/{id}/deactivate', self::handlerWithArgs($container, [AdminsController::class, 'deactivate']))
+                ->add($auth);
+            $group->post('/admins/{id}/reactivate', self::handlerWithArgs($container, [AdminsController::class, 'reactivate']))
+                ->add($auth);
 
             // Forms CRUD.
             $group->get('/forms', self::handler($container, [FormsController::class, 'index']))

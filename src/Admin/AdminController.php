@@ -8,6 +8,7 @@ use OpenSendForm\Auth\AdminRepository;
 use OpenSendForm\Auth\AuthService;
 use OpenSendForm\Auth\Csrf;
 use OpenSendForm\Auth\LoginOutcome;
+use OpenSendForm\Auth\PasswordHasher;
 use OpenSendForm\Auth\RecoveryCodes;
 use OpenSendForm\Auth\SessionInterface;
 use OpenSendForm\Auth\Totp;
@@ -29,6 +30,9 @@ final class AdminController
 {
     /** Session key holding an in-progress TOTP enrolment secret. */
     private const SESSION_SETUP_SECRET = 'auth.totp_setup_secret';
+
+    /** Session flag: the per-session dismissal of the 2FA enrolment nudge. */
+    private const SESSION_NUDGE_DISMISSED = 'admin.nudge_dismissed';
 
     // --- Login ------------------------------------------------------------
 
@@ -220,15 +224,38 @@ final class AdminController
 
         $todayStart = gmdate('Y-m-d', self::clockNow($c)) . ' 00:00:00';
 
+        $totpEnabled = (int) $admin['totp_enabled'] === 1;
+        $nudgeDismissed = self::session($c)->get(self::SESSION_NUDGE_DISMISSED) === true;
+
         return AdminView::renderPage($c, $response, 'dashboard', [
             'title'        => 'Dashboard',
-            'totpEnabled'  => (int) $admin['totp_enabled'] === 1,
+            'totpEnabled'  => $totpEnabled,
+            // Nudge shows only when 2FA is off and the admin has not dismissed
+            'showNudge'    => !$totpEnabled && !$nudgeDismissed,
             'activeForms'  => $forms->countActive(),
             'todayCount'   => $submissions->countSince($todayStart),
             'failedCount'  => $submissions->countByStatus('failed'),
             'deadCount'    => $submissions->countByStatus('dead'),
             'recent'       => $submissions->recentByStatuses(['failed', 'dead'], 10),
         ], 'dashboard');
+    }
+
+    /**
+     * POST /admin/nudge/dismiss — dismiss the 2FA enrolment nudge for the rest
+     * of this session. A no-op with a bad CSRF token; either way returns to the
+     * dashboard.
+     */
+    public static function dismissNudge(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $data = self::formData($request);
+        if (self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::session($c)->set(self::SESSION_NUDGE_DISMISSED, true);
+        }
+
+        return self::redirect($response, '/admin');
     }
 
     // --- TOTP enrolment ---------------------------------------------------
@@ -348,6 +375,66 @@ final class AdminController
         }
 
         return self::issueRecoveryCodes($c, $response, $admin['id']);
+    }
+
+    /**
+     * POST /admin/totp/disable — turn two-factor authentication off.
+     *
+     * A sensitive change, so it is doubly re-authenticated: the CURRENT
+     * password AND a CURRENT TOTP code are both required. On success the TOTP
+     * secret, the enabled flag and the recovery codes are all cleared, and the
+     * dashboard nudge is un-dismissed so the enrolment prompt returns.
+     */
+    public static function disableTotp(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $admin = self::auth($c)->currentAdmin();
+        if ($admin === null) {
+            return self::redirect($response, '/admin/login');
+        }
+        if ((int) $admin['totp_enabled'] !== 1 || $admin['totp_secret'] === null) {
+            return self::redirect($response, '/admin/totp/setup');
+        }
+
+        $data = self::formData($request);
+
+        if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            return self::renderTotpSetup($c, $response, [
+                'title'        => 'Two-factor authentication',
+                'enabled'      => true,
+                'error'        => '',
+                'disableError' => 'Your session expired. Please try again.',
+            ], 400);
+        }
+
+        $password = (string) ($data['current_password'] ?? '');
+        if (!self::hasher($c)->verify($password, (string) $admin['password_hash'])) {
+            return self::renderTotpSetup($c, $response, [
+                'title'        => 'Two-factor authentication',
+                'enabled'      => true,
+                'error'        => '',
+                'disableError' => 'That is not your current password.',
+            ], 401);
+        }
+
+        $totp = self::totpService($c);
+        if (!$totp->verify($admin['totp_secret'], (string) ($data['code'] ?? ''), self::clockNow($c))) {
+            return self::renderTotpSetup($c, $response, [
+                'title'        => 'Two-factor authentication',
+                'enabled'      => true,
+                'error'        => '',
+                'disableError' => 'That authentication code did not match.',
+            ], 401);
+        }
+
+        self::admins($c)->disableTotp($admin['id']);
+        // Re-arm the dashboard nudge: 2FA is off again, so prompt for it.
+        self::session($c)->remove(self::SESSION_NUDGE_DISMISSED);
+        self::flash($c)->success('Two-factor authentication has been disabled.');
+
+        return self::redirect($response, '/admin/totp/setup');
     }
 
     // --- Shared helpers ---------------------------------------------------
@@ -520,6 +607,22 @@ final class AdminController
         $s = $c->get(Totp::class);
 
         return $s;
+    }
+
+    private static function hasher(ContainerInterface $c): PasswordHasher
+    {
+        /** @var PasswordHasher $s */
+        $s = $c->get(PasswordHasher::class);
+
+        return $s;
+    }
+
+    private static function flash(ContainerInterface $c): Flash
+    {
+        /** @var Flash $f */
+        $f = $c->get(Flash::class);
+
+        return $f;
     }
 
     private static function config(ContainerInterface $c): Config

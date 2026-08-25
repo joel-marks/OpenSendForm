@@ -618,3 +618,68 @@
   entry appended. QUESTIONS.md unchanged — defect 3's non-reproduction is
   noted above, not a blocking open question.
 - Deviations from prompt: none.
+
+## 2026-08-25 — Increment 5c: admin account management + 2FA lifecycle UX
+- Branch: feature/increment-5c-account (from main @ 767b963).
+- Single-tenant admin model made explicit and documented: all admins are
+  co-operators of one installation and see all forms/submissions; no roles,
+  no per-form ownership; no account deletion — retirement is deactivation.
+- Migration 008 (`008_admins_is_active.sql`) adds
+  `admins.is_active INTEGER NOT NULL DEFAULT 1`. `AdminRepository` hydrates
+  `is_active` and gains `listAll/countActive/setActive/updateDisplayName/
+  updateEmail`. `AuthService`: after a correct password an inactive admin is
+  refused with the SAME generic `Invalid` outcome (no status disclosure), and
+  `currentAdmin()` invalidates a live session whose admin has since been
+  deactivated (or deleted) on its very next request.
+- Account screen: `Admin\AccountController` + `templates/admin/account.php`.
+  Change display name (CSRF only); change email (current password required +
+  format validation + uniqueness against other admins; normalised to lower
+  case); change password (current password + new ≥ 12 chars entered twice;
+  session id regenerated on success, mirroring login's privilege-change
+  rotation). `_nav.php` now renders the admin's name as an "Account" link and
+  gained an "Admins" nav item.
+- Admins screen: `Admin\AdminsController` + `templates/admin/admins.php`.
+  Roster (email, name, 2FA on/off badge, active badge, last login); create an
+  admin with an initial password ≥ 12 (inline guidance to change it after
+  first sign-in); deactivate/reactivate. GUARD (server-enforced AND button
+  hidden): the last remaining ACTIVE admin can never be deactivated, including
+  self-deactivation when last active. No delete action.
+- 2FA nudge: `AdminController::dashboard` computes `showNudge` (TOTP off AND
+  not dismissed this session); `dismissNudge` (CSRF POST) sets a session flag.
+  Dismissible-per-session banner in `dashboard.php`; absent when 2FA on.
+- 2FA disable: `AdminController::disableTotp` on the enabled `totp_setup.php`
+  view — requires current password AND a current TOTP code; on success clears
+  `totp_secret`/`totp_enabled`/`recovery_codes`, flashes, and re-arms the
+  dashboard nudge (removes the dismiss flag). New `/admin/totp/disable` route,
+  separated `.osf-danger-zone` section.
+- Recovery/2FA UX consistency: login `totp.php` states "Enter ONE of your
+  recovery codes" and hints at the 10-character format; `recovery_codes.php`
+  lists codes one per line in a monospace `.osf-recovery-block` `<pre>`
+  (copy-all still preserves line breaks) and says each works exactly once; the
+  regenerate-recovery-codes confirm input now uses the same `data-totp-code`
+  six-box enhancement as the login screen (shared admin.js, no divergent
+  markup) — no JS change was needed.
+- Routes: `/admin/account` (+ `/name`,`/email`,`/password` POSTs),
+  `/admin/admins` (+ `/{id}/deactivate`,`/{id}/reactivate`, create POST),
+  `/admin/totp/disable`, `/admin/nudge/dismiss` — all behind AuthMiddleware.
+- Tests (+28, 296 total; 2069 assertions): new
+  `tests/Admin/AccountAdminsHttpTest.php` covers account name/email/password
+  changes incl. wrong-current-password rejections, mismatch/too-short, email
+  uniqueness + normalisation, and session regeneration on password change;
+  admins list/create (incl. short-password 422 and duplicate 422) /
+  deactivate / reactivate; the last-active guard (button hidden AND server
+  refusal) incl. self-deactivation, plus the allowed self-deactivation when
+  not last (session then invalidated); inactive-admin login refused
+  generically AND a live session invalidated when the admin is deactivated;
+  nudge present/dismiss/absent-when-enabled; the 2FA disable matrix (wrong
+  password / wrong code / success + state cleanup + nudge re-arm); and the
+  recovery-screen copy. `SchemaMigrationsTest`/`MigrationRunnerTest` version
+  lists bumped to include 8 and the admins-columns check gained `is_active`;
+  `AdminUiTest`'s pico.min.css route-loop gained the account + admins screens.
+  Full suite green.
+- Docs: README "Admin model" subsection added (single shared workspace, all
+  admins see all forms, how to add/deactivate admins, first admin from the
+  installer or CLI) plus Account/Admins screens and the 2FA nudge/disable/
+  regenerate notes; CONTEXT.md overwritten; this HISTORY entry appended.
+  QUESTIONS.md unchanged — nothing ambiguous this sprint.
+- Deviations from prompt: none.
