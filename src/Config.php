@@ -34,19 +34,97 @@ final class Config
     {
         $env ??= getenv();
 
-        $defaults = self::defaults();
-        $values = $defaults;
+        $values = self::layerEnvironment(self::defaults(), $env);
 
-        foreach (array_keys($defaults) as $key) {
+        return self::finalise($values);
+    }
+
+    /**
+     * Build configuration from a written config file: a PHP script returning
+     * an associative array of key => value. Only recognised keys are honoured;
+     * an unrecognised key is ignored. Unlike the environment parser, a value
+     * supplied by the file IS honoured even when empty (the file is trusted).
+     *
+     * The environment is NOT consulted here; see load() for the merged factory
+     * that layers env overrides on top of a file.
+     */
+    public static function fromFile(string $path): self
+    {
+        return self::finalise(self::layerFile(self::defaults(), $path));
+    }
+
+    /**
+     * The merged factory used by the front controller.
+     *
+     * Precedence (lowest to highest): shipped defaults < config file (when it
+     * exists) < environment. So a written config file supplies the installed
+     * values, but an environment variable always wins — the seam the dev
+     * container relies on. With no file present this behaves exactly like
+     * fromEnvironment(), so the devcontainer (pure-env) is unchanged.
+     *
+     * @param string|null                     $filePath Config file to read, if any.
+     * @param array<string,string|false|null> $env      Environment; defaults to the
+     *                                                   process environment.
+     */
+    public static function load(?string $filePath = null, ?array $env = null): self
+    {
+        $env ??= getenv();
+
+        $values = self::defaults();
+        if ($filePath !== null && is_file($filePath)) {
+            $values = self::layerFile($values, $filePath);
+        }
+        $values = self::layerEnvironment($values, $env);
+
+        return self::finalise($values);
+    }
+
+    /**
+     * Overlay environment values onto a base map. A key is overridden only when
+     * present and non-empty (false/null/'' leave the base untouched), so blank
+     * env vars never clobber a shipped or file-supplied value.
+     *
+     * @param array<string,string>            $base
+     * @param array<string,string|false|null> $env
+     * @return array<string,string>
+     */
+    private static function layerEnvironment(array $base, array $env): array
+    {
+        foreach (array_keys($base) as $key) {
             if (array_key_exists($key, $env)) {
                 $value = $env[$key];
                 if ($value !== false && $value !== null && $value !== '') {
-                    $values[$key] = (string) $value;
+                    $base[$key] = (string) $value;
                 }
             }
         }
 
-        return self::finalise($values);
+        return $base;
+    }
+
+    /**
+     * Overlay a config file's values onto a base map. The file must return an
+     * array; only recognised keys are copied, and (the file being trusted) even
+     * an explicitly empty value is honoured.
+     *
+     * @param array<string,string> $base
+     * @return array<string,string>
+     */
+    private static function layerFile(array $base, string $path): array
+    {
+        /** @psalm-suppress UnresolvableInclude */
+        $fileValues = require $path;
+        if (!is_array($fileValues)) {
+            throw new \RuntimeException("Config file did not return an array: {$path}");
+        }
+
+        foreach ($fileValues as $key => $value) {
+            if (is_string($key) && array_key_exists($key, $base)) {
+                $base[$key] = (string) $value;
+            }
+        }
+
+        return $base;
     }
 
     /**
@@ -109,6 +187,10 @@ final class Config
             'SMTP_HOST'              => 'localhost',
             'SMTP_PORT'              => '25',
             'DB_DSN'                 => 'sqlite:' . self::defaultDatabasePath(),
+            // Database credentials, used by non-sqlite drivers (e.g. MySQL).
+            // Empty for the default file-backed SQLite, which needs none.
+            'DB_USER'                => '',
+            'DB_PASS'                => '',
 
             // Submit-token signing secret. Empty by default; see the
             // dev-only fallback applied in fromEnvironment().
@@ -155,6 +237,24 @@ final class Config
         return dirname(__DIR__) . '/var/data/opensendform.sqlite';
     }
 
+    /**
+     * Absolute path to the written config file the installer produces. It sits
+     * under var/ (outside public/), so it is never web-served even if reached.
+     */
+    public static function defaultConfigFilePath(): string
+    {
+        return dirname(__DIR__) . '/var/config.php';
+    }
+
+    /**
+     * Generate a strong APP_SECRET: 32 random bytes rendered as 64 hex chars.
+     * Used by the installer to seed the submit-token HMAC key on install.
+     */
+    public static function generateSecret(): string
+    {
+        return bin2hex(random_bytes(32));
+    }
+
     public function get(string $key): string
     {
         if (!array_key_exists($key, $this->values)) {
@@ -191,6 +291,27 @@ final class Config
     public function dbDsn(): string
     {
         return $this->get('DB_DSN');
+    }
+
+    /**
+     * Database username, or null when none is configured (the SQLite default).
+     * Returned as null rather than '' so it is passed straight to PDO.
+     */
+    public function dbUser(): ?string
+    {
+        $user = $this->get('DB_USER');
+
+        return $user === '' ? null : $user;
+    }
+
+    /**
+     * Database password, or null when none is configured.
+     */
+    public function dbPass(): ?string
+    {
+        $pass = $this->get('DB_PASS');
+
+        return $pass === '' ? null : $pass;
     }
 
     public function appSecret(): string

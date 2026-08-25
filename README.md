@@ -18,6 +18,40 @@ clients to maintain.
 PHP 8.1+ · Slim 4 · SQLite (MySQL optional) · PHPMailer · optional
 Cloudflare Turnstile. Server-rendered admin panel with 2FA.
 
+## Installing
+
+OpenSendForm is designed to install on ordinary shared cPanel/PHP hosting with
+no command line — just a file upload and a short browser wizard. (It is still
+pre-alpha; the pieces below work, but the release zip and the email-setup
+wizard land in later increments.)
+
+1. **Upload and extract the zip** into a folder on your host, and point a
+   domain or subdomain at that folder's `public/` directory (its document
+   root). Everything the app needs is inside the zip — you never run Composer.
+2. **Visit your site in a browser.** Until it's set up, every page sends you to
+   the installer at `/install`.
+3. **Follow the steps:**
+   - *Hosting check* — the installer confirms your PHP version, required
+     extensions and that its folders are writable. Anything marked
+     “Action needed” must be fixed before you can continue; “Heads up” items
+     are optional.
+   - *Database* — choose the **built-in database (SQLite)** unless your host
+     told you to use MySQL. If you pick MySQL, enter the database details from
+     cPanel and the installer tests the connection for you.
+   - *Administrator* — create the account you'll sign in with (a name, email
+     and a password of at least 12 characters).
+   - *Finish* — the installer writes its settings and locks itself so it can't
+     be run again by accident.
+4. **Sign in** at `/admin/login` with the account you just created.
+
+**Email comes after first login.** A fresh install stores submissions but does
+not send email yet; you enable email delivery from the admin panel once you're
+signed in. Until then, submissions are safely saved and can be delivered once
+mail is set up.
+
+**Re-running the installer** is deliberate: delete the file
+`var/install.lock` with your host's file manager, then reload `/install`.
+
 ## Development
 This repo is developed AI-assisted (Claude Code in a devcontainer)
 under human architectural direction. See CLAUDE.md, CONTEXT.md and
@@ -162,9 +196,9 @@ every administrator is a co-operator of it. All admins see all forms and all
 submissions — there are no roles, per-form permissions or ownership. This is by
 design; it keeps a self-hosted, single-site tool simple.
 
-- **The first admin** comes from the installer (a later increment) or, for
-  developers, from the CLI (`php bin/osf admin:create`, below). There is no
-  public sign-up.
+- **The first admin** is created by the browser installer (see *Installing*
+  above) or, for developers, from the CLI (`php bin/osf admin:create`, below).
+  There is no public sign-up.
 - **Adding admins** — any signed-in admin can create another from **Admins →
   Add an admin**, setting an initial password (≥ 12 characters). Share it over
   a secure channel and ask the new admin to change it from their **Account**

@@ -683,3 +683,79 @@
   regenerate notes; CONTEXT.md overwritten; this HISTORY entry appended.
   QUESTIONS.md unchanged — nothing ambiguous this sprint.
 - Deviations from prompt: none.
+
+## 2026-08-25 — Increment 6a: browser installer, part one (engine)
+- Branch: feature/increment-6a-installer (from main @ 125e89a).
+- Config refactor (`src/Config.php`): added `fromFile(path)` (reads a PHP array
+  file over defaults; trusted, so explicit empties are honoured) and the merged
+  `load(?file, ?env)` factory with precedence defaults < file < environment —
+  env always wins, so the dev container is unchanged and a fileless boot equals
+  `fromEnvironment()`. Added `generateSecret()` (bin2hex of 32 random bytes → 64
+  hex), `defaultConfigFilePath()`, new `DB_USER`/`DB_PASS` keys with
+  `dbUser()`/`dbPass()` accessors (null when empty). `public/index.php` and
+  `bin/osf` now boot via `Config::load($paths->configPath)` and pass DB creds to
+  `Database::connect`. Existing Config tests unchanged; new `ConfigMergeTest`
+  covers file<env precedence, the fileless path, blank-env non-clobber, secret
+  format and the credential accessors.
+- Installed-state model: installed iff BOTH `var/config.php` and
+  `var/install.lock` exist (`Install\Paths::isInstalled()`, one definition).
+  `Install\InstallStateMiddleware` (app-level, outermost): not installed → every
+  non-install route (public API included) redirects to /install; installed → all
+  /install routes 404, except /install/done which stays reachable and
+  self-guards on a one-time session flag. Gating is OPT-IN: enabled only when
+  install `Paths` are passed to `AppFactory::create` (new 8th param), so the
+  existing suite — which passes none — behaves as installed and is untouched.
+  `public/index.php` passes `Paths::production()`.
+- Requirements (`Install\Requirements` + injectable `EnvironmentProbe`, real
+  `SystemProbe`): pass/warn/fail rows each with plain-language remedy. PHP≥8.1
+  (fail), pdo_sqlite (fail only when pdo_mysql also absent, else warn), pdo_mysql
+  (warn), openssl (fail), curl (warn — Turnstile note), var/ + var/data/ writable
+  (fail), HTTPS (warn, request-aware incl. X-Forwarded-Proto). `hasFailures()`
+  blocks Continue.
+- Installer service (`Install\InstallerService`; `DbConnector` seam +
+  `PdoDbConnector`): `prepareDatabase` (sqlite default file under var/data with a
+  writability check; mysql host/port/dbname/user/pass → DSN), `connect` (live
+  test; friendly `InstallerException`, never a raw driver string), `migrate`,
+  `createAdmin` (via `AdminRepository`, ≥12 twice, friendly errors), and `commit`
+  — write `var/config.php` then `var/install.lock` atomically (temp+rename,
+  chmod 0600); a lock-write failure unlinks the just-written config so no partial
+  install remains. Written config: APP_ENV=production, generated APP_SECRET,
+  DB_DSN/DB_USER/DB_PASS, MAIL_ENABLED=0 (email is set up later, in 6b); header
+  documents the env-override precedence. Lock holds installed_at + version.
+- Wizard (`Install\InstallController`/`InstallRoutes`, `templates/install/{layout,
+  welcome,database,admin,finish,done}.php`; reuses the admin design system + the
+  strict CSP via the shared `SecurityHeadersMiddleware`): GET /install (welcome +
+  requirements table, Continue disabled on any fail), GET/POST /install/database
+  (choice + creds + live test), GET/POST /install/admin (first admin), GET/POST
+  /install/finish (review + atomic commit), GET /install/done (success: sign-in
+  link, delete-the-lock-to-reinstall note, email-next reminder). Step order held
+  in the session; jumping ahead bounces to the earliest incomplete step; every
+  POST CSRF-protected; the DB and admin passwords are never echoed back into a
+  field. Each step also HARD-refuses to run once installed (not just routing).
+- CLI: `bin/osf install:status` prints installed/not-installed, config/lock
+  presence and (when present) the lock's timestamp/version — no DB connection,
+  no secrets. `OSF_BASE_DIR` relocates the writable var/ tree; `Paths::production`,
+  the front controller and the CLI all honour it.
+- Tests (+40, 336 total; 2244 assertions): `tests/Install/RequirementsTest`
+  (every pass/warn/fail branch + remedy present via `FakeProbe`),
+  `InstallerServiceTest` (mysql fake-connector success + friendly failure,
+  config/lock contents incl. 64-hex secret + MAIL_ENABLED=0, unique secrets,
+  commit atomicity on induced lock failure), `InstallerHttpTest` (full happy-path
+  wizard into a temp SQLite dir then admin login; step-order enforcement; bad
+  CSRF; password-never-echoed; not-installed redirects incl. public API;
+  installed→404; CSP + pico + no-inline templates), `WelcomeTemplateTest`
+  (Continue disabled on fail), `tests/ConfigMergeTest`, `tests/Cli/
+  CliInstallStatusTest` (both states via OSF_BASE_DIR); support `FakeProbe`,
+  `FakeDbConnector`. Full suite green.
+- Docs: README gained an end-user "Installing" section (upload zip, visit
+  /install, follow steps, email after first login, delete the lock to re-run)
+  with the developer section intact; the admin-model note updated (first admin
+  now from the installer). CONTEXT.md overwritten and trimmed to ~150 lines
+  (Mail/Turnstile condensed, 6a section added). This HISTORY entry appended.
+- QUESTIONS.md: no new questions; Increment 3 item 2 explicitly anticipated this
+  installer increment (MAIL_ENABLED flag), now the installer writes MAIL_ENABLED=0.
+- Deviations from prompt: added a GET /install/finish review page (the prompt
+  listed only POST /install/finish) so the commit is an explicit confirmation
+  step rather than an implicit redirect; and an OSF_BASE_DIR override on
+  `Paths::production()` to keep install:status testable and allow relocating
+  var/. Neither changes public API behaviour.
