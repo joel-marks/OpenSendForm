@@ -67,7 +67,8 @@ final class FormsController
                 $input['origins'],
                 $input['storeContent'],
                 $input['retentionDays'],
-                $input['isActive']
+                $input['isActive'],
+                $input['allowNojs']
             );
             self::forms($c)->setTurnstile((int) $form['id'], $pair[0], $pair[1]);
         } catch (InvalidArgumentException $e) {
@@ -131,7 +132,8 @@ final class FormsController
                 $input['origins'],
                 $input['storeContent'],
                 $input['retentionDays'],
-                $input['isActive']
+                $input['isActive'],
+                $input['allowNojs']
             );
             self::forms($c)->setTurnstile((int) $form['id'], $pair[0], $pair[1]);
         } catch (InvalidArgumentException $e) {
@@ -199,7 +201,7 @@ final class FormsController
      * @param array<string, mixed> $data
      * @return array{name: string, recipient: string, origins: array<int, string>,
      *               storeContent: bool, retentionDays: int, isActive: bool,
-     *               tsSitekey: string, tsSecret: string}
+     *               allowNojs: bool, tsSitekey: string, tsSecret: string}
      */
     private static function readInput(array $data): array
     {
@@ -210,6 +212,7 @@ final class FormsController
             'storeContent'  => isset($data['store_content']),
             'retentionDays' => (int) ($data['retention_days'] ?? 0),
             'isActive'      => isset($data['is_active']),
+            'allowNojs'     => isset($data['allow_nojs']),
             'tsSitekey'     => (string) ($data['turnstile_sitekey'] ?? ''),
             'tsSecret'      => (string) ($data['turnstile_secret'] ?? ''),
         ];
@@ -282,6 +285,7 @@ final class FormsController
             'storeContent'      => false,
             'retentionDays'     => 30,
             'isActive'          => true,
+            'allowNojs'         => false,
             'turnstileSitekey'  => '',
             'turnstileSecretSet' => false,
             'error'             => '',
@@ -305,6 +309,7 @@ final class FormsController
             'storeContent'      => (int) $form['store_content'] === 1,
             'retentionDays'     => (int) $form['retention_days'],
             'isActive'          => (int) $form['is_active'] === 1,
+            'allowNojs'         => (int) $form['allow_nojs'] === 1,
             'turnstileSitekey'  => (string) ($form['turnstile_sitekey'] ?? ''),
             'turnstileSecretSet' => ($form['turnstile_secret'] ?? null) !== null,
             'error'             => '',
@@ -338,6 +343,7 @@ final class FormsController
             'storeContent'       => isset($data['store_content']),
             'retentionDays'      => (int) ($data['retention_days'] ?? 30),
             'isActive'           => isset($data['is_active']),
+            'allowNojs'          => isset($data['allow_nojs']),
             'turnstileSitekey'   => (string) ($data['turnstile_sitekey'] ?? ''),
             // Never echo the secret; keep the existing set/not-set state.
             'turnstileSecretSet' => $form !== null && ($form['turnstile_secret'] ?? null) !== null,

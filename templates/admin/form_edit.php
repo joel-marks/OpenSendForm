@@ -16,6 +16,7 @@ use function OpenSendForm\Admin\h;
  * @var bool        $storeContent
  * @var int         $retentionDays
  * @var bool        $isActive
+ * @var bool        $allowNojs
  * @var string      $turnstileSitekey
  * @var bool        $turnstileSecretSet
  * @var string      $error
@@ -44,6 +45,7 @@ if (($installUrl) !== '' && $formKey !== null) {
         . '  <label>Message' . "\n"
         . '    <textarea name="message" required></textarea>' . "\n"
         . '  </label>' . "\n"
+        . '  <input type="text" name="_osf_hp" style="display:none" aria-hidden="true" tabindex="-1" autocomplete="off">' . "\n"
         . '  <button type="submit">Send</button>' . "\n"
         . '</form>' . "\n"
         . '<script src="' . $scriptUrl . '" defer></script>' . "\n";
@@ -110,6 +112,21 @@ if (($installUrl) !== '' && $formKey !== null) {
         Active
     </label>
     <small>Inactive forms reject token/submit requests.</small>
+
+    <fieldset>
+        <label for="allow_nojs">
+            <input type="checkbox" id="allow_nojs" name="allow_nojs" value="1"
+                   <?= $allowNojs ? 'checked' : '' ?>>
+            Allow submissions without JavaScript
+        </label>
+        <small>
+            Off (the default) rejects a no-JS submission with an honest
+            "requires JavaScript" page and sends nothing. On, a no-JS
+            submission is delivered but with reduced bot protection (the
+            token's min-time check is skipped for it); a form with Turnstile
+            enabled still cannot be submitted without JavaScript either way.
+        </small>
+    </fieldset>
 
     <fieldset>
         <legend><strong>Cloudflare Turnstile</strong> (optional)</legend>

@@ -130,11 +130,13 @@ function cmdFormList(Database $db): int
 
     foreach ($forms as $form) {
         $state = $form['is_active'] === 1 ? 'active' : 'disabled';
+        $nojs = $form['allow_nojs'] === 1 ? ' [allow_nojs]' : '';
         fwrite(STDOUT, sprintf(
-            "#%d  %s  [%s]  %s -> %s  origins: %s\n",
+            "#%d  %s  [%s]%s  %s -> %s  origins: %s\n",
             $form['id'],
             $form['form_key'],
             $state,
+            $nojs,
             $form['name'],
             $form['recipient_email'],
             implode(', ', $form['allowed_origins'])
