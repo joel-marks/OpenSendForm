@@ -43,7 +43,8 @@ final class FormRepository
         array $allowedOrigins,
         bool $storeContent = false,
         int $retentionDays = 30,
-        bool $isActive = true
+        bool $isActive = true,
+        bool $allowNojs = false
     ): array {
         $name = $this->normaliseName($name);
         $recipientEmail = $this->normaliseRecipient($recipientEmail);
@@ -56,10 +57,10 @@ final class FormRepository
         $this->db->execute(
             'INSERT INTO forms
                 (form_key, name, recipient_email, allowed_origins,
-                 store_content, retention_days, is_active, created_at, updated_at)
+                 store_content, retention_days, is_active, allow_nojs, created_at, updated_at)
              VALUES
                 (:form_key, :name, :recipient_email, :allowed_origins,
-                 :store_content, :retention_days, :is_active, :created_at, :updated_at)',
+                 :store_content, :retention_days, :is_active, :allow_nojs, :created_at, :updated_at)',
             [
                 'form_key'        => $key,
                 'name'            => $name,
@@ -68,6 +69,7 @@ final class FormRepository
                 'store_content'   => $storeContent ? 1 : 0,
                 'retention_days'  => $retentionDays,
                 'is_active'       => $isActive ? 1 : 0,
+                'allow_nojs'      => $allowNojs ? 1 : 0,
                 'created_at'      => $now,
                 'updated_at'      => $now,
             ]
@@ -102,7 +104,8 @@ final class FormRepository
         array $allowedOrigins,
         bool $storeContent,
         int $retentionDays,
-        bool $isActive
+        bool $isActive,
+        bool $allowNojs = false
     ): bool {
         $name = $this->normaliseName($name);
         $recipientEmail = $this->normaliseRecipient($recipientEmail);
@@ -117,6 +120,7 @@ final class FormRepository
                     store_content = :store_content,
                     retention_days = :retention_days,
                     is_active = :is_active,
+                    allow_nojs = :allow_nojs,
                     updated_at = :now
               WHERE id = :id',
             [
@@ -126,6 +130,7 @@ final class FormRepository
                 'store_content'   => $storeContent ? 1 : 0,
                 'retention_days'  => $retentionDays,
                 'is_active'       => $isActive ? 1 : 0,
+                'allow_nojs'      => $allowNojs ? 1 : 0,
                 'now'             => self::now(),
                 'id'              => $id,
             ]
@@ -388,6 +393,7 @@ final class FormRepository
             'store_content'   => (int) $row['store_content'],
             'retention_days'  => (int) $row['retention_days'],
             'is_active'       => (int) $row['is_active'],
+            'allow_nojs'      => (int) $row['allow_nojs'],
             'turnstile_sitekey' => isset($row['turnstile_sitekey']) && $row['turnstile_sitekey'] !== null
                 ? (string) $row['turnstile_sitekey'] : null,
             'turnstile_secret'  => isset($row['turnstile_secret']) && $row['turnstile_secret'] !== null
