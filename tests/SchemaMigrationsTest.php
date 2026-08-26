@@ -25,7 +25,7 @@ final class SchemaMigrationsTest extends TestCase
         self::assertContains('002_create_forms.sql', $applied);
         self::assertContains('003_create_submissions.sql', $applied);
         self::assertContains('004_create_rate_counters.sql', $applied);
-        self::assertSame([1, 2, 3, 4, 5, 6, 7, 8], $runner->appliedVersions());
+        self::assertSame([1, 2, 3, 4, 5, 6, 7, 8, 9], $runner->appliedVersions());
 
         // All tables now exist and are queryable.
         self::assertTableExists($db, 'forms');
@@ -42,7 +42,7 @@ final class SchemaMigrationsTest extends TestCase
         $secondRun = $runner->migrate();
 
         self::assertSame([], $secondRun);
-        self::assertSame([1, 2, 3, 4, 5, 6, 7, 8], $runner->appliedVersions());
+        self::assertSame([1, 2, 3, 4, 5, 6, 7, 8, 9], $runner->appliedVersions());
     }
 
     public function testSubmissionsIndexExists(): void
@@ -70,6 +70,19 @@ final class SchemaMigrationsTest extends TestCase
 
         self::assertContains('turnstile_sitekey', $columns);
         self::assertContains('turnstile_secret', $columns);
+    }
+
+    public function testAllowNojsColumnExistsOnForms(): void
+    {
+        $db = Database::connect('sqlite::memory:');
+        (new MigrationRunner($db, $this->migrationsPath()))->migrate();
+
+        $columns = array_column(
+            $db->fetchAll('PRAGMA table_info(forms)'),
+            'name'
+        );
+
+        self::assertContains('allow_nojs', $columns);
     }
 
     public function testAdminsTableExistsWithExpectedColumns(): void
