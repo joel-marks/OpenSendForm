@@ -7,11 +7,13 @@ namespace OpenSendForm\Tests\Http;
 use OpenSendForm\AppFactory;
 use OpenSendForm\Config;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Mail\MailerInterface;
 use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
 use OpenSendForm\Submit\SubmitContext;
 use OpenSendForm\Tests\Support\FakeDnsChecker;
+use OpenSendForm\Tests\Support\FakeMailer;
 use OpenSendForm\Tests\Support\FixedClock;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -117,7 +119,152 @@ final class SubmitHtmlResponseTest extends TestCase
         self::assertStringContainsString('<meta name="robots" content="noindex, nofollow">', $body);
     }
 
+    // --- No-JS token policy (allow_nojs) -----------------------------------
+
+    public function testDefaultFormTokenlessHtmlPostGetsHonestErrorAndStoresNothing(): void
+    {
+        // allow_nojs defaults off. A no-JS post carries no _osf_token at all
+        // (only osf.js fetches and injects one).
+        $response = $this->handle($this->submitRequest([
+            'name' => 'Ada',
+        ], ['accept' => 'text/html', 'referer' => self::ORIGIN . '/contact']));
+
+        self::assertSame(400, $response->getStatusCode());
+        $body = (string) $response->getBody();
+        self::assertStringContainsString('requires JavaScript', $body);
+        self::assertStringContainsString('was not sent', $body);
+        self::assertStringNotContainsString('Message sent', $body);
+        self::assertSame(0, $this->submissionCount());
+    }
+
+    public function testDefaultFormInvalidTokenHtmlPostGetsHonestErrorAndStoresNothing(): void
+    {
+        $response = $this->handle($this->submitRequest([
+            SubmitContext::FIELD_TOKEN => 'not-a-real-token',
+            'name'                     => 'Ada',
+        ], ['accept' => 'text/html', 'referer' => self::ORIGIN . '/contact']));
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertStringContainsString('requires JavaScript', (string) $response->getBody());
+        self::assertSame(0, $this->submissionCount());
+    }
+
+    public function testAllowNojsFormTokenlessHtmlPostIsStoredAndDelivered(): void
+    {
+        $this->forms->updateForm(
+            (int) $this->form['id'],
+            'Contact',
+            'owner@example.com',
+            [self::ORIGIN],
+            false,
+            30,
+            true,
+            true // allow_nojs
+        );
+        $mailer = new FakeMailer();
+
+        $response = $this->handle($this->submitRequest([
+            'name' => 'Ada',
+        ], ['accept' => 'text/html', 'referer' => self::ORIGIN . '/contact']), $mailer);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('Message sent', (string) $response->getBody());
+        self::assertSame(1, $this->submissionCount());
+        self::assertSame(1, $mailer->callCount());
+    }
+
+    public function testAllowNojsFormHoneypotFilledHtmlPostGetsGenericSuccessButDiscards(): void
+    {
+        // A filled honeypot is never a genuine no-JS submitter (humans never
+        // fill it), so it still gets the generic success page — never the
+        // honest javascript_required error — and is still silently discarded.
+        $this->forms->updateForm(
+            (int) $this->form['id'],
+            'Contact',
+            'owner@example.com',
+            [self::ORIGIN],
+            false,
+            30,
+            true,
+            true // allow_nojs
+        );
+        $mailer = new FakeMailer();
+
+        $response = $this->handle($this->submitRequest([
+            'name'                        => 'Ada',
+            SubmitContext::FIELD_HONEYPOT => 'i am a bot',
+        ], ['accept' => 'text/html', 'referer' => self::ORIGIN . '/contact']), $mailer);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('Message sent', (string) $response->getBody());
+        self::assertSame(0, $this->submissionCount());
+        self::assertSame(0, $mailer->callCount());
+    }
+
+    public function testAllowNojsFormWithForgedTokenHtmlPostStillGetsSilentSuccess(): void
+    {
+        // allow_nojs only waives the check for a *missing* token. A present
+        // but forged/too-young token on this path is still a bot signature
+        // and falls through to the ordinary silent discard.
+        $this->forms->updateForm(
+            (int) $this->form['id'],
+            'Contact',
+            'owner@example.com',
+            [self::ORIGIN],
+            false,
+            30,
+            true,
+            true // allow_nojs
+        );
+
+        $response = $this->handle($this->submitRequest([
+            SubmitContext::FIELD_TOKEN => 'not-a-real-token',
+            'name'                     => 'Ada',
+        ], ['accept' => 'text/html', 'referer' => self::ORIGIN . '/contact']));
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('Message sent', (string) $response->getBody());
+        self::assertSame(0, $this->submissionCount());
+    }
+
     // --- JSON contract is untouched --------------------------------------
+
+    public function testDefaultFormTokenlessJsonPostStillFakeSucceedsAndStoresNothing(): void
+    {
+        // The honest javascript_required error is HTML-only; the JSON contract
+        // for a missing token is completely unchanged regardless of allow_nojs.
+        $response = $this->handle($this->submitRequest([
+            'name' => 'Ada',
+        ]));
+
+        self::assertStringContainsString('application/json', $response->getHeaderLine('Content-Type'));
+        self::assertSame(['ok' => true], $this->json($response));
+        self::assertSame(0, $this->submissionCount());
+    }
+
+    public function testAllowNojsFormTokenlessJsonPostStillFakeSucceedsAndStoresNothing(): void
+    {
+        $this->forms->updateForm(
+            (int) $this->form['id'],
+            'Contact',
+            'owner@example.com',
+            [self::ORIGIN],
+            false,
+            30,
+            true,
+            true // allow_nojs
+        );
+
+        $response = $this->handle($this->submitRequest([
+            'name' => 'Ada',
+        ]));
+
+        self::assertStringContainsString('application/json', $response->getHeaderLine('Content-Type'));
+        self::assertSame(['ok' => true], $this->json($response));
+        // allow_nojs is an HTML-negotiated-path concept only; the JSON/fetch
+        // path (the embed JS) keeps the original silent-discard behaviour.
+        self::assertSame(0, $this->submissionCount());
+    }
 
     public function testNoAcceptHeaderKeepsJsonContract(): void
     {
@@ -160,16 +307,16 @@ final class SubmitHtmlResponseTest extends TestCase
 
     // --- Harness ----------------------------------------------------------
 
-    private function app(): App
+    private function app(?MailerInterface $mailer = null): App
     {
         $config = Config::fromEnvironment(['APP_ENV' => 'testing', 'APP_SECRET' => self::SECRET]);
 
-        return AppFactory::create($config, $this->db, $this->dns, $this->clock);
+        return AppFactory::create($config, $this->db, $this->dns, $this->clock, $mailer);
     }
 
-    private function handle(ServerRequestInterface $request): ResponseInterface
+    private function handle(ServerRequestInterface $request, ?MailerInterface $mailer = null): ResponseInterface
     {
-        return $this->app()->handle($request);
+        return $this->app($mailer)->handle($request);
     }
 
     private function freshToken(): string

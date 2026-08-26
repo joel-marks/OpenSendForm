@@ -111,12 +111,17 @@
 
     var state = { token: null, submitting: false, widget: null, cfToken: null, lastFocus: null };
 
-    var honeypot = el('input', {
-      type: 'text', name: '_osf_hp', 'class': 'osf-hp',
-      tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true'
-    });
-    if (!ui) { honeypot.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0'; }
-    form.appendChild(honeypot);
+    // The snippet's own hidden _osf_hp input protects no-JS posts too; reuse
+    // it if present instead of adding a second field with the same name.
+    var honeypot = form.querySelector('[name="_osf_hp"]');
+    if (!honeypot) {
+      honeypot = el('input', {
+        type: 'text', name: '_osf_hp', 'class': 'osf-hp',
+        tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true'
+      });
+      if (!ui) { honeypot.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0'; }
+      form.appendChild(honeypot);
+    }
 
     var live = el('div', { 'class': 'osf-vh', 'aria-live': 'polite', role: 'status' });
     root.appendChild(live);

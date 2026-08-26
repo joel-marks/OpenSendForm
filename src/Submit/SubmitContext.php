@@ -77,6 +77,14 @@ final class SubmitContext
     public ?string $originHeader = null;
     public ?string $refererHeader = null;
 
+    /**
+     * Whether this request negotiated an HTML response (a native, top-level
+     * browser form POST) rather than the JSON contract. Set once here from
+     * the same Accept-header logic Routes::submit uses to pick the renderer,
+     * so stages (TokenStage) can see it without re-parsing headers.
+     */
+    public bool $prefersHtml = false;
+
     public function __construct(ServerRequestInterface $request, ?string $formKey = null)
     {
         $this->request = $request;
@@ -95,5 +103,22 @@ final class SubmitContext
 
         $referer = $request->getHeaderLine('Referer');
         $this->refererHeader = $referer === '' ? null : $referer;
+
+        $this->prefersHtml = self::computePrefersHtml($request);
+    }
+
+    /**
+     * True only for a request that positively wants text/html and does not
+     * ask for JSON — i.e. a native browser navigation. The absence of an
+     * Accept header (typical of API/curl callers) keeps the JSON default.
+     */
+    public static function computePrefersHtml(ServerRequestInterface $request): bool
+    {
+        $accept = strtolower($request->getHeaderLine('Accept'));
+        if ($accept === '' || strpos($accept, 'application/json') !== false) {
+            return false;
+        }
+
+        return strpos($accept, 'text/html') !== false;
     }
 }

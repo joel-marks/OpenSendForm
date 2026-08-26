@@ -245,6 +245,45 @@ final class AdminUiTest extends TestCase
         self::assertSame(10, $reloaded['retention_days']);
     }
 
+    public function testAllowNojsCheckboxRoundTrips(): void
+    {
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $id = (int) $form['id'];
+        self::assertSame(0, $this->forms->findById($id)['allow_nojs'], 'defaults off');
+        $this->login();
+
+        $edit = $this->get("/admin/forms/{$id}/edit");
+        self::assertStringContainsString('Allow submissions without JavaScript', (string) $edit->getBody());
+
+        $this->post("/admin/forms/{$id}", [
+            '_csrf'          => $this->csrfFrom($edit),
+            'name'           => 'Contact',
+            'recipient'      => 'owner@example.com',
+            'origins'        => 'https://example.com',
+            'retention_days' => '30',
+            'is_active'      => '1',
+            'allow_nojs'     => '1',
+        ]);
+        self::assertSame(1, $this->forms->findById($id)['allow_nojs'], 'checkbox on -> flag set');
+
+        $edit2 = $this->get("/admin/forms/{$id}/edit");
+        self::assertMatchesRegularExpression(
+            '/id="allow_nojs" name="allow_nojs" value="1"\s+checked/',
+            (string) $edit2->getBody()
+        );
+
+        // Omitting the field (unchecked checkbox) clears it back off.
+        $this->post("/admin/forms/{$id}", [
+            '_csrf'          => $this->csrfFrom($edit2),
+            'name'           => 'Contact',
+            'recipient'      => 'owner@example.com',
+            'origins'        => 'https://example.com',
+            'retention_days' => '30',
+            'is_active'      => '1',
+        ]);
+        self::assertSame(0, $this->forms->findById($id)['allow_nojs'], 'checkbox off -> flag cleared');
+    }
+
     // --- Turnstile secret handling ---------------------------------------
 
     public function testTurnstileSecretIsNeverEchoedBack(): void

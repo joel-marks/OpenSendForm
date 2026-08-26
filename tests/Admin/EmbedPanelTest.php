@@ -70,6 +70,12 @@ final class EmbedPanelTest extends TestCase
         self::assertStringContainsString(self::HOST . '/embed/osf.js?v=' . Version::STRING, $body);
         // A copy button reuses the existing [data-copy] enhancement.
         self::assertStringContainsString('data-copy=', $body);
+        // The honeypot ships as a hidden field in the static snippet itself, so
+        // it protects no-JS posts too; osf.js only injects one when absent.
+        self::assertStringContainsString('name=&quot;_osf_hp&quot;', $body);
+        self::assertStringContainsString('display:none', $body);
+        self::assertStringContainsString('aria-hidden=&quot;true&quot;', $body);
+        self::assertStringContainsString('tabindex=&quot;-1&quot;', $body);
     }
 
     public function testNewFormScreenHasNoEmbedPanel(): void
