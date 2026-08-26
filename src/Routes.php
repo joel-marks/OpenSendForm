@@ -238,8 +238,9 @@ final class Routes
         // navigation that prefers text/html, so it gets a readable HTML page.
         // Every API/fetch client (the embed JS sends Accept: application/json,
         // programmatic callers send */* or nothing) keeps the frozen JSON
-        // contract.
-        if (self::prefersHtml($request)) {
+        // contract. $context->prefersHtml was computed from this same request
+        // and already drove TokenStage's no-JS policy.
+        if ($context->prefersHtml) {
             $back = self::safeBackUrl(self::header($request, 'Referer'));
             $result = SubmitHtmlPage::render($response, $outcome, $back);
         } else {
@@ -299,22 +300,6 @@ final class Routes
         return $response
             ->withHeader('Content-Type', 'text/html; charset=utf-8')
             ->withStatus(200);
-    }
-
-    /**
-     * Whether the client prefers an HTML response over the JSON contract. True
-     * only for a request that positively wants text/html and does not ask for
-     * JSON — i.e. a native browser navigation. The absence of an Accept header
-     * (typical of API/curl callers) keeps the JSON default.
-     */
-    private static function prefersHtml(ServerRequestInterface $request): bool
-    {
-        $accept = strtolower($request->getHeaderLine('Accept'));
-        if ($accept === '' || strpos($accept, 'application/json') !== false) {
-            return false;
-        }
-
-        return strpos($accept, 'text/html') !== false;
     }
 
     /**
