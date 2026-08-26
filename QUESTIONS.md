@@ -2,45 +2,74 @@
 
 ## Increment 7
 
-1. **No-JS submissions vs the token stage — SECURITY/SCOPE, needs a ruling.**
-   "Progressive enhancement is absolute": a plain form must POST to the endpoint
-   with JS off and work. But a no-JS POST carries no `_osf_token` (the token is
-   fetched and injected by JS), and the LOCKED `TokenStage` treats a *missing*
-   token as a bot signature — it returns a silent fake success and stores/relays
-   nothing (`SubmitEndpointTest::testMissingTokenReturnsFakeSuccessAndStores
-   Nothing`). Net effect today: a genuine no-JS submitter sees the new "Message
-   sent" HTML page but **no email is delivered**. The honeypot is also JS-only,
-   so no-JS submissions rely on origin allowlist + rate limit + email MX +
-   optional Turnstile.
-   I did **not** change the pipeline (out of scope for the embed increment, and
-   a locked security decision). Options:
-   (a) Accept no-JS as best-effort/degraded and document "JS strongly
-       recommended for delivery" (the embed always sends a token, so the normal
-       path is unaffected). Simplest; matches the current code.
-   (b) Distinguish a *completely absent* token from a forged/too-young one:
-       missing → proceed (deliver), forged/too-young → keep the silent discard.
-       This lets no-JS deliver, but a bot could likewise omit the token to skip
-       the min-age check (the other defences still apply). A real weakening of
-       the naive-bot filter.
-   (c) A server-issued token embeddable in the static snippet — not currently
-       possible (the snippet is static HTML the site owner pastes).
-   Recommend a decision before no-JS delivery is promised anywhere user-facing.
-   The no-JS **HTML rendering** (success/error page + back link) is done and
-   tested regardless of the ruling.
+1. **No-JS submissions vs the token stage — SECURITY/SCOPE. RESOLVED
+   (2026-08-26, fix/nojs-policy).** Architect ruling: refine option (b) below
+   into a per-form toggle. Migration 009 adds
+   `forms.allow_nojs INTEGER NOT NULL DEFAULT 0`.
+   - `allow_nojs = 0` (default): an HTML-negotiated (no-JS) POST with a
+     missing, forged or too-young token gets an HONEST error page — *"This
+     form requires JavaScript to submit. Your message was not sent."*
+     (`400 javascript_required`) — never the fake-success page, and nothing
+     is stored. This is a deliberate, documented exception to "bot checks
+     fail silently": a full-page navigation that silently claimed success
+     would actively mislead a genuine no-JS submitter, which is worse than
+     an honest failure telling them what to do (enable JS, or ask the site
+     owner to turn the flag on).
+   - `allow_nojs = 1`: a *missing* token on the HTML-negotiated path skips
+     the token check entirely (the min-time bot check is knowingly waived
+     for this subset) so a genuine no-JS submission is stored and delivered.
+     A *present but forged/too-young* token on this same path is still
+     treated as a bot signature and falls through to the ordinary silent
+     discard — the waiver is narrowly for "no token at all", not for a bad
+     one. All other stages (origin, rate limits, honeypot, email MX,
+     Turnstile) apply unchanged.
+   - Honeypot hardening: the admin embed-code panel's snippet now ships the
+     `_osf_hp` field as a static hidden `<input>` (inline `display:none` +
+     `aria-hidden` + `tabindex="-1"`), so it protects no-JS posts too;
+     `osf.js` reuses it instead of injecting a duplicate when already present.
+     A filled honeypot on the HTML path still gets the generic success page
+     (never the honest error) and is discarded either way — humans never
+     fill it, so there is no honest signal to give back.
+   - JSON/fetch path is completely unchanged regardless of `allow_nojs`
+     (locked by regression tests): the embed always sends a token, so this
+     toggle only ever affects a plain `<form>` POST with the script absent.
+   - Admin form-edit gained an "Allow submissions without JavaScript"
+     checkbox with an inline trade-off sentence (reduced bot protection;
+     Turnstile-enabled forms cannot be submitted without JavaScript either
+     way, since Turnstile itself needs the script); `bin/osf form:list` shows
+     an `[allow_nojs]` tag. See `src/Submit/Stages/TokenStage.php`,
+     `tests/Http/SubmitHtmlResponseTest.php`, HISTORY.md.
 
-2. **`osf.js` is 15.4 KB unminified, over the 12 KB brief target — needs
-   ratification.** The locked rich-UX feature set (submitting spinner, success
-   overlay dialog with focus trap + Esc/OK, submitted panel with "Send another",
-   inline field errors + form-level strip, invisible `token_expired` retry,
-   Turnstile load/render/reset, aria-live announcements, themeable injected CSS,
-   `prefers-reduced-motion`, `data-osf-ui="none"`, events) does not fit in 12 KB
-   as *readable, unminified* source — even stripped of all indentation, blank
-   lines and comments the code floor is ~12.5 KB, so 12 KB is unreachable
-   without cutting a feature or shipping a build artefact. "No build step" and
-   "unminified" rule out minification. Decision taken: keep the file readable
-   (2-space indent to shave size), guard against regression at 16 KB in
-   `EmbedAssetTest`, and flag here. Options for the architect: (a) accept the
-   readable ~15 KB (chosen); (b) drop/trim a feature to approach 12 KB;
+   Original question, for context: "Progressive enhancement is absolute": a
+   plain form must POST to the endpoint with JS off and work. But a no-JS
+   POST carries no `_osf_token` (the token is fetched and injected by JS),
+   and the LOCKED `TokenStage` treated a *missing* token as a bot signature —
+   it returned a silent fake success and stored/relayed nothing. Net effect:
+   a genuine no-JS submitter saw the "Message sent" HTML page but no email
+   was delivered. Options considered were (a) accept no-JS as
+   best-effort/degraded (simplest, no code change); (b) distinguish a
+   completely absent token from a forged/too-young one — missing → proceed,
+   forged/too-young → keep the silent discard (chosen, gated per-form); (c) a
+   server-issued token embeddable in the static snippet — not currently
+   possible (the snippet is static HTML the site owner pastes).
+
+2. **`osf.js` is 15.4 KB unminified, over the 12 KB brief target. RATIFIED
+   (2026-08-26, architect ruling, fix/nojs-policy).** Keep the readable
+   ~15 KB file with the 16 KB `EmbedAssetTest` regression guard — option (a)
+   below, as proposed. No further action; the guard stays as the ongoing
+   regression check.
+
+   Original question, for context: the locked rich-UX feature set (submitting
+   spinner, success overlay dialog with focus trap + Esc/OK, submitted panel
+   with "Send another", inline field errors + form-level strip, invisible
+   `token_expired` retry, Turnstile load/render/reset, aria-live
+   announcements, themeable injected CSS, `prefers-reduced-motion`,
+   `data-osf-ui="none"`, events) does not fit in 12 KB as *readable,
+   unminified* source — even stripped of all indentation, blank lines and
+   comments the code floor is ~12.5 KB, so 12 KB is unreachable without
+   cutting a feature or shipping a build artefact. "No build step" and
+   "unminified" rule out minification. Options were: (a) accept the readable
+   ~15 KB (chosen/ratified); (b) drop/trim a feature to approach 12 KB;
    (c) permit a committed minified build despite the no-build-step rule.
 
 

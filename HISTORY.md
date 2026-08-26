@@ -903,3 +903,55 @@
      posts awaits an architect ruling — QUESTIONS.md #1.
   3. `osf.js` uses 2-space indentation (repo default is 4) purely to reduce the
      shipped asset's size.
+
+## 2026-08-26 — Sprint: no-JS submission policy (fix/nojs-policy)
+- Branch: fix/nojs-policy (off latest main, PRs #15–#17 merged).
+- Follow-up patch resolving both Increment 7 QUESTIONS.md items per explicit
+  architect rulings.
+- Migration 009: `forms.allow_nojs INTEGER NOT NULL DEFAULT 0`. Threaded
+  through `FormRepository::createForm/updateForm` (new optional trailing
+  param, default off — every existing caller unaffected) and `hydrate()`.
+- `SubmitContext` gained `prefersHtml` (computed once from the Accept header
+  in the constructor) so pipeline stages can see the same content-negotiation
+  decision `Routes::submit` uses to pick JSON vs HTML rendering; `Routes`
+  now reuses `$context->prefersHtml` instead of recomputing it.
+- `TokenStage` no-JS policy (JSON/fetch path untouched in every branch):
+  on the HTML-negotiated path, `allow_nojs = 0` (default) turns a
+  missing/forged/too-young token into an honest `400 javascript_required`
+  error ("This form requires JavaScript to submit. Your message was not
+  sent.") and nothing is stored; `allow_nojs = 1` skips the check only for a
+  *missing* token (proceeds to store + deliver), while a present-but-invalid
+  token on that same path still falls through to the ordinary silent
+  discard. `HoneypotStage` behaviour needed no code change (its unconditional
+  success outcome already renders the generic HTML success page, not the
+  honest error) — documented why in both stage docblocks.
+- Honeypot hardening: the admin embed-code panel's snippet now ships `_osf_hp`
+  as a static hidden `<input>` (`display:none`, `aria-hidden="true"`,
+  `tabindex="-1"`) so it protects no-JS posts; `osf.js` reuses an existing
+  `[name="_osf_hp"]` field instead of injecting a duplicate (file stays at
+  15,642 bytes, under the 16 KB guard).
+- Admin form-edit: "Allow submissions without JavaScript" checkbox with an
+  inline trade-off sentence (reduced bot protection; Turnstile-enabled forms
+  can't be submitted without JavaScript either way). `bin/osf form:list` now
+  shows an `[allow_nojs]` tag.
+- README: replaced the single no-JS guarantee sentence with a two-mode
+  description (off = honest error/nothing sent; on = delivered with the
+  min-time check waived) and a note on the new `javascript_required` error
+  code as the one HTML-only exception to "bot checks fail silently".
+- Tests (+11, 404 total, 2483 assertions): `SubmitHtmlResponseTest` gained
+  default-form tokenless/invalid-token HTML → honest error + nothing stored;
+  `allow_nojs` form tokenless HTML → stored + delivered (via `FakeMailer`) +
+  success page; `allow_nojs` + honeypot-filled HTML → generic success page
+  but discarded, mailer never called; `allow_nojs` + forged token HTML →
+  still silent discard; two JSON-path regression locks (default and
+  `allow_nojs` forms both keep the original fake-success-and-discard
+  behaviour). `EmbedPanelTest` extended to assert the snippet's static
+  honeypot markup. `AdminUiTest` gained a checkbox round-trip test (defaults
+  off, posts on, re-render shows checked, omitting the field on a later post
+  clears it). `SchemaMigrationsTest`/`MigrationRunnerTest` updated for the
+  9th migration. Full suite green.
+- No new Composer dependencies or vendored assets (none authorised, none
+  needed).
+- QUESTIONS.md: both Increment 7 items resolved with decision notes (#1 per
+  the ruling above; #2 — the 15.4 KB `osf.js` size — ratified as-is, no code
+  change).

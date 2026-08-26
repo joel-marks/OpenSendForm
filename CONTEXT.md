@@ -1,20 +1,22 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-26 (feature/increment-7-embed, Claude Code)
+Last updated: 2026-08-26 (fix/nojs-policy, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
 validation/abuse pipeline; passing submissions are stored and relayed by
-authenticated SMTP (in-request send + operator retry cron). Increment 7 adds the
-CLIENT-SITE ARTEFACT: one static embed JS (`public/embed/osf.js`) any website
-pastes in, a no-JS HTML fallback on the submit endpoint, cache-headed embed
-serving, and an admin "Embed code" snippet panel. Prior increments: 4 optional
-per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id auth, TOTP 2FA + recovery
-codes, Pico.css, forms/submissions CRUD, account/admins mgmt); 6a the BROWSER
-INSTALLER engine; 6b the MAIL-SETUP wizard (SMTP write-back, test send,
-SPF/DKIM/DMARC checker). Suite green (395 tests). CI runs it on every PR/push.
-6a and 6b are now merged to main (PRs #15/#16), so this branch (off main) builds
-on the full stack.
+authenticated SMTP (in-request send + operator retry cron). Increment 7 added
+the CLIENT-SITE ARTEFACT: one static embed JS (`public/embed/osf.js`) any
+website pastes in, a no-JS HTML fallback on the submit endpoint, cache-headed
+embed serving, and an admin "Embed code" snippet panel. This sprint
+(fix/nojs-policy) resolved the increment's open no-JS delivery question with a
+per-form `allow_nojs` toggle — see "No-JS submission policy" below. Prior
+increments: 4 optional per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id
+auth, TOTP 2FA + recovery codes, Pico.css, forms/submissions CRUD,
+account/admins mgmt); 6a the BROWSER INSTALLER engine; 6b the MAIL-SETUP
+wizard (SMTP write-back, test send, SPF/DKIM/DMARC checker). Suite green (404
+tests). CI runs it on every PR/push. Increments 6a/6b/7 are merged to main
+(PRs #15/#16/#17); this branch builds on the full stack.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -35,37 +37,44 @@ authenticated SMTP to the site owner.
   shape is unchanged for fetch/API callers.
 - Bot-facing checks fail SILENTLY (filled honeypot; missing/forged/too-young
   token → fake success, nothing stored); an authentic but EXPIRED token returns
-  an honest `400 token_expired`.
+  an honest `400 token_expired`. Deliberate exception: on the HTML-negotiated
+  (no-JS) path, a form with `allow_nojs=0` (default) instead returns an honest
+  `400 javascript_required` for a missing/forged/too-young token — see "No-JS
+  submission policy" below.
 - Content always stored as the in-flight delivery payload; `store_content`
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
-## Embed artefact + no-JS fallback (Increment 7) — this sprint
+## Embed artefact + no-JS fallback (Increment 7, policy refined by
+## fix/nojs-policy) — condensed
 - `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build. Each
-  `form[data-osf-key]` initialises independently. Reads `data-osf-key` +
-  `data-osf-url` (installation base); fetches/holds a token; injects an
-  `_osf_hp` honeypot; submits over `fetch` (urlencoded, `Accept:
-  application/json`) with `_osf_token`/`_osf_hp`/`_osf_cf`.
-- Rich UX: submitting spinner; success overlay dialog (focus-trapped, Esc/OK,
-  focus returned) then a "Send another" submitted panel; inline field error for
-  `invalid_email`/`email_domain_invalid` else a form-level strip (input values
-  preserved); invisible `token_expired` refresh-and-retry-once; Turnstile loaded
-  once + rendered above submit when the token response carries a sitekey, reset
-  on failure. Namespaced injected `<style>` (`.osf-`, CSS-variable themable),
-  `prefers-reduced-motion`, aria-live. Events `osf:submit`/`:success`/`:error`;
-  `data-osf-ui="none"` suppresses UI but keeps events. Never throws uncaught —
-  any unexpected path degrades to the native POST.
-- Progressive enhancement: the snippet's `<form action>` is the submit URL, so
-  with JS off the browser POSTs directly. `src/Http/SubmitHtmlPage.php` renders
-  a self-contained success/error HTML page (inline styles, back-link from a
-  validated http(s) Referer). `Routes::submit` content-negotiates on Accept.
-- Serving: `GET /embed/osf.js` → long immutable `Cache-Control` (snippet busts
-  it with `?v=`); front-controller fallback/header seam (Apache serves the
-  static file directly in prod). `GET /embed/manual.html` → dev-only manual
-  checklist (`tests/embed-manual.html`), 404 elsewhere.
-- Admin: form-edit "Embed code" panel (existing forms only) shows the
-  ready-filled copy-paste snippet (form + versioned script tag) with a
-  `[data-copy]` button; `FormsController` derives the base URL from the request.
+  `form[data-osf-key]` initialises independently: fetches/holds a token,
+  reuses an existing `_osf_hp` honeypot input or injects one, submits over
+  `fetch` (`_osf_token`/`_osf_hp`/`_osf_cf`). Rich UX (spinner, focus-trapped
+  success dialog, "Send another", inline/form-level errors, invisible
+  `token_expired` retry, Turnstile render/reset, themeable injected CSS,
+  `prefers-reduced-motion`, aria-live, `osf:submit/:success/:error` events,
+  `data-osf-ui="none"`); never throws uncaught, degrades to native POST.
+- Progressive enhancement: the snippet's `<form action>` is the submit URL
+  (with a static hidden `_osf_hp` honeypot field), so JS-off still POSTs
+  directly. `src/Http/SubmitHtmlPage.php` renders a self-contained
+  success/error HTML page; `Routes::submit` content-negotiates on Accept into
+  `SubmitContext::prefersHtml`, shared with `TokenStage`'s no-JS policy below.
+- Serving: `GET /embed/osf.js` long-immutable-cached (`?v=` cache-bust);
+  `GET /embed/manual.html` dev-only checklist. Admin form-edit "Embed code"
+  panel shows the ready-filled snippet + `[data-copy]` button.
+- **No-JS submission policy** (resolves QUESTIONS.md Increment 7 #1):
+  migration 009 `forms.allow_nojs INTEGER NOT NULL DEFAULT 0` (admin checkbox
+  "Allow submissions without JavaScript"; `bin/osf form:list` shows
+  `[allow_nojs]`). On the HTML-negotiated path: `allow_nojs=0` (default) turns
+  a missing/forged/too-young token into an honest `400 javascript_required`
+  page, nothing stored — the one other exception to "bot checks fail
+  silently" (see above); `allow_nojs=1` skips the token check only for a
+  *missing* token (stores + delivers), a present-but-invalid one still falls
+  through to the silent discard; all other stages apply unchanged. A filled
+  honeypot always gets the generic success page (never the honest error) and
+  is always discarded either way. The JSON/fetch path (what the embed JS
+  sends) is unaffected by any of this.
 
 ## Mail-setup wizard + installer (6a/6b) — condensed; see HISTORY
 - 6a: installed iff BOTH var/config.php and var/install.lock exist; CSRF wizard
@@ -90,7 +99,9 @@ authenticated SMTP to the site owner.
 method/body size → field hygiene → form lookup by URL key → origin allowlist
 → per-IP then per-form rate limits → honeypot → token → Turnstile (optional)
 → email (syntax + MX/A) → store → delivery (terminal, always succeeds).
-Locked by SubmitPipelineOrderTest.
+Locked by SubmitPipelineOrderTest. The token stage's outcome now additionally
+depends on `SubmitContext::prefersHtml` and `form.allow_nojs` — see "No-JS
+submission policy" above; the stage order itself is unchanged.
 
 ## What exists now
 0–6b as before, plus Increment 7: `public/embed/osf.js`, `src/Http/
@@ -98,15 +109,15 @@ SubmitHtmlPage.php`; `Routes` content negotiation + `/embed/osf.js` and
 `/embed/manual.html` routes; `templates/admin/form_edit.php` embed panel +
 `FormsController` base-URL derivation; `tests/embed-manual.html`; tests
 `tests/Http/{SubmitHtmlResponseTest,EmbedAssetTest}`, `tests/Admin/
-EmbedPanelTest`. Only hard Composer dep remains phpmailer/phpmailer ^6.
+EmbedPanelTest`. Plus this sprint: migration 009 (`forms.allow_nojs`); the
+`allow_nojs` checkbox on form-edit; `SubmitContext::prefersHtml`; the
+`TokenStage` no-JS policy; the snippet's static `_osf_hp` honeypot field.
+Only hard Composer dep remains phpmailer/phpmailer ^6.
 
 ## Known gaps / not built (by design)
 - Synthetic monitoring (8), zip packaging/release layout + production `.htaccess`
   (front-controller rewrite + static cache headers), upgrade/migration-on-update
   — later increments.
-- No-JS SUBMISSION DELIVERY: the no-JS HTML page renders, but a tokenless no-JS
-  post is silently discarded by the locked token stage (no email) — pending an
-  architect ruling (QUESTIONS.md #1).
 - Password RESET by email, roles/permissions, account deletion, audit log.
 - File uploads / redirect success URLs (explicitly out of embed scope).
 - Real MySQL live-test, NativeSession `$_SESSION`, real SMTP/DNS, and the DOM
@@ -114,11 +125,10 @@ EmbedPanelTest`. Only hard Composer dep remains phpmailer/phpmailer ^6.
   osf.js is covered by `node --check` + the manual checklist.
 
 ## Open items
-- QUESTIONS.md Increment 7 #1 (no-JS delivery vs the token stage — SECURITY,
-  needs a ruling) and #2 (osf.js 15.4 KB over the 12 KB brief target — infeasible
-  as readable source; ratify).
-- The 6b branch/merge-order flag (QUESTIONS.md) is now RESOLVED — 6a/6b merged to
-  main via PRs #15/#16.
+None outstanding. QUESTIONS.md Increment 7 #1 (no-JS delivery vs the token
+stage) and #2 (osf.js size) are both RESOLVED this sprint (fix/nojs-policy);
+the 6b branch/merge-order flag was already RESOLVED (6a/6b/7 merged to main
+via PRs #15/#16/#17).
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin
