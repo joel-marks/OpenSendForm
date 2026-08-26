@@ -7,6 +7,7 @@ namespace OpenSendForm\Admin;
 use InvalidArgumentException;
 use OpenSendForm\Auth\Csrf;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Version;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -53,7 +54,7 @@ final class FormsController
         $data = self::formData($request);
 
         if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
-            return self::renderInvalid($c, $response, null, $data, 'Your session expired. Please try again.', 400);
+            return self::renderInvalid($c, $request, $response, null, $data, 'Your session expired. Please try again.', 400);
         }
 
         $input = self::readInput($data);
@@ -70,7 +71,7 @@ final class FormsController
             );
             self::forms($c)->setTurnstile((int) $form['id'], $pair[0], $pair[1]);
         } catch (InvalidArgumentException $e) {
-            return self::renderInvalid($c, $response, null, $data, $e->getMessage(), 422);
+            return self::renderInvalid($c, $request, $response, null, $data, $e->getMessage(), 422);
         }
 
         self::flash($c)->success('Form "' . $form['name'] . '" created.');
@@ -93,7 +94,11 @@ final class FormsController
             return self::redirect($response, '/admin/forms');
         }
 
-        return AdminView::renderPage($c, $response, 'form_edit', self::formVars($c, $form), 'forms');
+        $vars = self::formVars($c, $form);
+        $vars['installUrl'] = self::installUrl($request);
+        $vars['embedVersion'] = Version::STRING;
+
+        return AdminView::renderPage($c, $response, 'form_edit', $vars, 'forms');
     }
 
     public static function update(
@@ -112,7 +117,7 @@ final class FormsController
         $data = self::formData($request);
 
         if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
-            return self::renderInvalid($c, $response, $form, $data, 'Your session expired. Please try again.', 400);
+            return self::renderInvalid($c, $request, $response, $form, $data, 'Your session expired. Please try again.', 400);
         }
 
         $input = self::readInput($data);
@@ -130,7 +135,7 @@ final class FormsController
             );
             self::forms($c)->setTurnstile((int) $form['id'], $pair[0], $pair[1]);
         } catch (InvalidArgumentException $e) {
-            return self::renderInvalid($c, $response, $form, $data, $e->getMessage(), 422);
+            return self::renderInvalid($c, $request, $response, $form, $data, $e->getMessage(), 422);
         }
 
         self::flash($c)->success('Form "' . $input['name'] . '" updated.');
@@ -315,6 +320,7 @@ final class FormsController
      */
     private static function renderInvalid(
         ContainerInterface $c,
+        ServerRequestInterface $request,
         ResponseInterface $response,
         ?array $form,
         array $data,
@@ -336,9 +342,36 @@ final class FormsController
             // Never echo the secret; keep the existing set/not-set state.
             'turnstileSecretSet' => $form !== null && ($form['turnstile_secret'] ?? null) !== null,
             'error'              => $message,
+            // The embed panel only renders for an existing form (it needs a key).
+            'installUrl'         => $form === null ? '' : self::installUrl($request),
+            'embedVersion'       => Version::STRING,
         ];
 
         return AdminView::renderPage($c, $response, 'form_edit', $vars, 'forms', $status);
+    }
+
+    /**
+     * The installation's base URL (scheme://host[:port], no trailing path),
+     * derived from the current request. Returned empty when the request carries
+     * no host, so the embed panel degrades to a hint rather than a broken URL.
+     */
+    private static function installUrl(ServerRequestInterface $request): string
+    {
+        $uri = $request->getUri();
+        $host = $uri->getHost();
+        if ($host === '') {
+            return '';
+        }
+
+        $scheme = $uri->getScheme() !== '' ? $uri->getScheme() : 'https';
+        $authority = $host;
+        $port = $uri->getPort();
+        $isDefault = ($scheme === 'http' && $port === 80) || ($scheme === 'https' && $port === 443);
+        if ($port !== null && !$isDefault) {
+            $authority .= ':' . $port;
+        }
+
+        return $scheme . '://' . $authority;
     }
 
     // --- Container accessors & tiny helpers -------------------------------
