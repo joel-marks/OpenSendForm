@@ -319,9 +319,19 @@ markup. Multiple forms on one page each initialise independently.
 
 **No-JavaScript guarantee.** With the script absent, blocked or broken the form
 still POSTs directly to the endpoint (its `action`) and the server answers with
-a readable "Message sent" / error HTML page that links back — so a form is never
-dead. (Whether a *no-JS* submission is relayed by email depends on the token
-policy; see `QUESTIONS.md`.)
+a readable "Message sent" / error HTML page that links back — so a form is
+never dead, but whether the message is actually relayed by email depends on a
+per-form setting (the admin form-edit "Allow submissions without JavaScript"
+checkbox, `forms.allow_nojs`):
+- **Off (default).** A no-JS post carries no submit token (only the JS injects
+  one), so it gets an honest error page — *"This form requires JavaScript to
+  submit. Your message was not sent."* — and nothing is stored or delivered.
+- **On.** A no-JS post is accepted and delivered like any other submission.
+  This knowingly waives the token's min-time bot check for that subset of
+  traffic; origin allowlist, rate limits, the honeypot (the snippet now embeds
+  it as a hidden field so it protects no-JS posts too), and email validation
+  still apply. A form with Turnstile enabled cannot be submitted without
+  JavaScript either way, since Turnstile itself requires the script.
 
 With the script running, submission goes over `fetch`: a submitting spinner, an
 in-page "Message sent" confirmation and a "Send another" reset, inline
@@ -399,6 +409,12 @@ retry. Other failures return specific codes: `invalid_fields`,
 `unknown_form`, `origin_not_allowed`, `rate_limited`, `payload_too_large`,
 `method_not_allowed`, `invalid_email`, `email_domain_invalid`,
 `turnstile_required`, `turnstile_failed`.
+
+The one exception to "bot checks fail silently" is the HTML-negotiated (no-JS)
+path on a form with `allow_nojs` off: there a missing/invalid token returns an
+honest `400 javascript_required` HTML page instead of the fake-success JSON
+behaviour above, because a full-page navigation that silently claims success
+would mislead a genuine no-JS submitter. See the no-JS guarantee above.
 
 A stored submission is relayed by authenticated SMTP to the form's
 recipient. One send is attempted in-request; a failure never changes the
