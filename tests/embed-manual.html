@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenSendForm — embed manual test</title>
+<!--
+  Manual, human-driven checklist for public/embed/osf.js. There is deliberately
+  no JS test runner in this repo (no Node in production), so this page exercises
+  every embed state against the LIVE dev API. It is served only in dev, at
+  /embed/manual.html (see Routes::embedManual); it 404s in every other env.
+
+  Usage (from the dev container):
+    1. composer serve           # http://localhost:8080
+    2. Create a form whose allowed origin includes http://localhost:8080, e.g.
+         bin/osf form:create --name="Manual test" \
+           --recipient="owner@example.com" --origin="http://localhost:8080"
+    3. Open  http://localhost:8080/embed/manual.html?key=THE_FORM_KEY
+       (optionally &url=http://localhost:8080 to point at another install).
+    4. Work through the checklist below; watch the event log.
+    5. Delivered mail lands in Mailpit: http://localhost:8025
+-->
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;
+    max-width:52rem;margin:0 auto;padding:1.5rem;color:#1c1e21}
+  h1{font-size:1.4rem}
+  code,kbd{background:#eef0f3;padding:.1em .35em;border-radius:.25em}
+  .cols{display:flex;flex-wrap:wrap;gap:2rem}
+  .col{flex:1 1 20rem}
+  fieldset{border:1px solid #d7d7d7;border-radius:.4rem}
+  label{display:block;margin:.5rem 0}
+  input,textarea{width:100%;padding:.4rem;box-sizing:border-box}
+  button{cursor:pointer}
+  ol.checklist li{margin:.4rem 0}
+  #log{background:#0d1117;color:#c9d1d9;font-family:ui-monospace,monospace;font-size:.8rem;
+    padding:.75rem;border-radius:.4rem;height:14rem;overflow:auto;white-space:pre-wrap}
+  .config{background:#f4f5f7;border-radius:.4rem;padding:1rem;margin-bottom:1.5rem}
+</style>
+</head>
+<body>
+<h1>OpenSendForm embed — manual test</h1>
+
+<div class="config" id="config"></div>
+
+<div class="cols">
+  <div class="col">
+    <h2>Live form</h2>
+    <div id="mount"><em>Enter a form key above to mount the embed.</em></div>
+  </div>
+  <div class="col">
+    <h2>Event log</h2>
+    <div id="log" aria-live="polite"></div>
+    <p><small><code>osf:submit</code>, <code>osf:success</code> and
+    <code>osf:error</code> CustomEvents are logged here.</small></p>
+  </div>
+</div>
+
+<h2>Checklist</h2>
+<ol class="checklist">
+  <li><strong>Token + honeypot:</strong> view source of the mounted form — a hidden
+    <code>_osf_hp</code> input exists; on submit the request carries a
+    <code>_osf_token</code> (Network tab).</li>
+  <li><strong>Submitting state:</strong> the button disables and shows a spinner
+    while the request is in flight.</li>
+  <li><strong>Success UX:</strong> a "Message sent" overlay covers the form; OK (or
+    <kbd>Esc</kbd>) closes it to a "Send another" panel; focus is trapped in the
+    dialog and returns to the form afterwards; <code>osf:success</code> logs.</li>
+  <li><strong>Send another:</strong> restores a fresh, empty form and fetches a new
+    token.</li>
+  <li><strong>Field error:</strong> submit with an invalid email — an inline error
+    attaches to the email field, the input keeps its value,
+    <code>osf:error</code> (<code>invalid_email</code>) logs.</li>
+  <li><strong>Form-level error:</strong> disable the form in the admin panel, then
+    submit — a form-level error strip appears (<code>unknown_form</code>).</li>
+  <li><strong>token_expired (invisible retry):</strong> lower
+    <code>TOKEN_MAX_AGE_SECONDS</code> to a few seconds, load the form, wait past
+    it, then submit — it should still succeed with no visible error (a fresh
+    token is fetched and the submit retried once).</li>
+  <li><strong>Turnstile (optional):</strong> for a form with Turnstile configured,
+    the widget renders above the button; a failed challenge shows the form-level
+    error and resets the widget.</li>
+  <li><strong>Reduced motion:</strong> with the OS "reduce motion" setting on, the
+    spinner does not animate.</li>
+  <li><strong>No-JS guarantee:</strong> open this page with JavaScript disabled and
+    submit — the browser navigates to a readable "Message sent" / error page with
+    a link back. (Delivery of a no-JS submission depends on the token policy —
+    see QUESTIONS.md.)</li>
+  <li><strong>UI suppressed:</strong> append <code>&amp;ui=none</code> to the URL —
+    no overlay/spinner/error UI renders, but the events still fire.</li>
+</ol>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var key = params.get('key') || '';
+  var base = (params.get('url') || location.origin).replace(/\/+$/, '');
+  var uiNone = params.get('ui') === 'none';
+  var version = params.get('v') || 'manual';
+
+  var config = document.getElementById('config');
+  config.innerHTML =
+    '<form method="get">' +
+    '<label>Form key <input name="key" value="' + escapeHtml(key) + '" placeholder="osf_..."></label>' +
+    '<label>Installation URL <input name="url" value="' + escapeHtml(base) + '"></label>' +
+    '<label><input type="checkbox" name="ui" value="none"' + (uiNone ? ' checked' : '') + '> Suppress default UI (data-osf-ui="none")</label>' +
+    '<button type="submit">Mount form</button>' +
+    '</form>';
+
+  if (!key) {
+    return;
+  }
+
+  var mount = document.getElementById('mount');
+  var form = document.createElement('form');
+  form.setAttribute('action', base + '/v1/form/' + encodeURIComponent(key) + '/submit');
+  form.setAttribute('method', 'post');
+  form.setAttribute('data-osf-key', key);
+  form.setAttribute('data-osf-url', base);
+  if (uiNone) {
+    form.setAttribute('data-osf-ui', 'none');
+  }
+  form.innerHTML =
+    '<label>Your email <input type="email" name="email" required></label>' +
+    '<label>Message <textarea name="message" required></textarea></label>' +
+    '<button type="submit">Send</button>';
+  mount.innerHTML = '';
+  mount.appendChild(form);
+
+  ['osf:submit', 'osf:success', 'osf:error'].forEach(function (name) {
+    form.addEventListener(name, function (e) {
+      log(name + '  ' + JSON.stringify(e.detail || {}));
+    });
+  });
+
+  // Load the embed script AFTER the form exists so its init() finds it.
+  var s = document.createElement('script');
+  s.src = base + '/embed/osf.js?v=' + encodeURIComponent(version);
+  s.defer = true;
+  document.body.appendChild(s);
+
+  function log(line) {
+    var el = document.getElementById('log');
+    var t = new Date().toLocaleTimeString();
+    el.textContent += '[' + t + '] ' + line + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function escapeHtml(v) {
+    return String(v).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+})();
+</script>
+</body>
+</html>
