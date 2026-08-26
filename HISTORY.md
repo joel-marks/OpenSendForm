@@ -876,7 +876,7 @@
   reusing the `[data-copy]` button. `FormsController` derives the installation
   base URL from the request; empty host → no panel (so path-only test requests
   and the new-form screen show nothing).
-- Tests (+14, 409 total, 2445 assertions): `SubmitHtmlResponseTest` (HTML
+- Tests (+14, 395 total, 2445 assertions): `SubmitHtmlResponseTest` (HTML
   success stores + renders, HTML error message + safe back-link, non-http
   Referer rejected, well-formed page, and three JSON-contract regressions:
   no-Accept, Accept application/json, and json-preferred-over-html);

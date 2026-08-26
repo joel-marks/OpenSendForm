@@ -12,7 +12,7 @@ serving, and an admin "Embed code" snippet panel. Prior increments: 4 optional
 per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id auth, TOTP 2FA + recovery
 codes, Pico.css, forms/submissions CRUD, account/admins mgmt); 6a the BROWSER
 INSTALLER engine; 6b the MAIL-SETUP wizard (SMTP write-back, test send,
-SPF/DKIM/DMARC checker). Suite green (409 tests). CI runs it on every PR/push.
+SPF/DKIM/DMARC checker). Suite green (395 tests). CI runs it on every PR/push.
 6a and 6b are now merged to main (PRs #15/#16), so this branch (off main) builds
 on the full stack.
 
