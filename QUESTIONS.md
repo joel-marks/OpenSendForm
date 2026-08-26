@@ -1,9 +1,54 @@
 # Open questions for the architect
 
+## Increment 7
+
+1. **No-JS submissions vs the token stage — SECURITY/SCOPE, needs a ruling.**
+   "Progressive enhancement is absolute": a plain form must POST to the endpoint
+   with JS off and work. But a no-JS POST carries no `_osf_token` (the token is
+   fetched and injected by JS), and the LOCKED `TokenStage` treats a *missing*
+   token as a bot signature — it returns a silent fake success and stores/relays
+   nothing (`SubmitEndpointTest::testMissingTokenReturnsFakeSuccessAndStores
+   Nothing`). Net effect today: a genuine no-JS submitter sees the new "Message
+   sent" HTML page but **no email is delivered**. The honeypot is also JS-only,
+   so no-JS submissions rely on origin allowlist + rate limit + email MX +
+   optional Turnstile.
+   I did **not** change the pipeline (out of scope for the embed increment, and
+   a locked security decision). Options:
+   (a) Accept no-JS as best-effort/degraded and document "JS strongly
+       recommended for delivery" (the embed always sends a token, so the normal
+       path is unaffected). Simplest; matches the current code.
+   (b) Distinguish a *completely absent* token from a forged/too-young one:
+       missing → proceed (deliver), forged/too-young → keep the silent discard.
+       This lets no-JS deliver, but a bot could likewise omit the token to skip
+       the min-age check (the other defences still apply). A real weakening of
+       the naive-bot filter.
+   (c) A server-issued token embeddable in the static snippet — not currently
+       possible (the snippet is static HTML the site owner pastes).
+   Recommend a decision before no-JS delivery is promised anywhere user-facing.
+   The no-JS **HTML rendering** (success/error page + back link) is done and
+   tested regardless of the ruling.
+
+2. **`osf.js` is 15.4 KB unminified, over the 12 KB brief target — needs
+   ratification.** The locked rich-UX feature set (submitting spinner, success
+   overlay dialog with focus trap + Esc/OK, submitted panel with "Send another",
+   inline field errors + form-level strip, invisible `token_expired` retry,
+   Turnstile load/render/reset, aria-live announcements, themeable injected CSS,
+   `prefers-reduced-motion`, `data-osf-ui="none"`, events) does not fit in 12 KB
+   as *readable, unminified* source — even stripped of all indentation, blank
+   lines and comments the code floor is ~12.5 KB, so 12 KB is unreachable
+   without cutting a feature or shipping a build artefact. "No build step" and
+   "unminified" rule out minification. Decision taken: keep the file readable
+   (2-space indent to shave size), guard against regression at 16 KB in
+   `EmbedAssetTest`, and flag here. Options for the architect: (a) accept the
+   readable ~15 KB (chosen); (b) drop/trim a feature to approach 12 KB;
+   (c) permit a committed minified build despite the no-build-step rule.
+
+
 ## Increment 6b
 
 1. **Branch base: 6b was built on `feature/increment-6a-installer`, not `main`.
-   FLAG FOR MERGE ORDER (not blocking).**
+   FLAG FOR MERGE ORDER (not blocking). RESOLVED (2026-08-26): 6a then 6b were
+   merged to `main` via PRs #15 and #16; Increment 7 branches cleanly off main.**
    The 6b task prompt said to branch from `main`, but Increment 6a (the browser
    installer engine) has not been merged to `main` yet — its `src/Install/*`,
    the atomic config writer, `Config::load/fromFile`, `DB_USER/DB_PASS` and the

@@ -839,3 +839,67 @@
   QUESTIONS.md gained the branch/merge-order flag.
 - Deviations from prompt: branch based on 6a rather than main (necessary; see
   above and QUESTIONS.md). No functional deviations otherwise.
+
+## 2026-08-26 — Increment 7: embed snippet + submission JS
+- Branch: feature/increment-7-embed (off main).
+- The client artefact: `public/embed/osf.js` — one static, dependency-free
+  vanilla-ES2017 file, no build step. Per form (`form[data-osf-key]`,
+  initialised independently): fetches a token from
+  `{data-osf-url}/v1/form/{key}/token` and holds it; injects a visually-hidden
+  `_osf_hp` honeypot; submits over `fetch` (urlencoded, `Accept:
+  application/json`) with `_osf_token`/`_osf_hp`/`_osf_cf`. Rich UX: submitting
+  spinner + disabled button; success = focus-trapped overlay dialog ("Message
+  sent" + OK/Esc) covering the wrapped form area, then a submitted panel with
+  "Send another" that resets the form and re-fetches a token; failure = inline
+  field error for `invalid_email`/`email_domain_invalid` (attached to
+  `[name=email]`, value preserved) else a form-level strip; `token_expired`
+  handled invisibly (refresh token, retry once, only then surface); Turnstile
+  loaded once and rendered above the submit when the token response carries a
+  sitekey, reset on `turnstile_failed`/`turnstile_required`. Namespaced injected
+  `<style>` (`.osf-` prefix), CSS-variable themable, `prefers-reduced-motion`,
+  aria-live announcements. Events `osf:submit`/`osf:success`/`osf:error` on the
+  form; `data-osf-ui="none"` suppresses UI but keeps events + wire handling.
+  Every unexpected path degrades to the native POST; the file never throws
+  uncaught.
+- Server additions (minimal): `src/Http/SubmitHtmlPage.php` renders the no-JS
+  success/error page (self-contained inline styles, back-link from a validated
+  http(s) Referer only). `Routes::submit` now content-negotiates — a client that
+  prefers `text/html` and does not ask for JSON gets the HTML page; the frozen
+  JSON contract is unchanged for `fetch`/API callers (Accept empty or containing
+  `application/json` → JSON). New routes: `GET /embed/osf.js` (served with
+  `Cache-Control: public, max-age=31536000, immutable`; the front-controller
+  fallback/header seam — Apache serves the static file directly in prod) and
+  `GET /embed/manual.html` (the manual checklist, dev-only, 404 elsewhere).
+- Admin: form-edit gains an **Embed code** panel (existing forms only) with the
+  ready-filled copy-paste snippet (form action = submit URL for the no-JS
+  fallback, `data-osf-key`/`data-osf-url`, and the `?v=`-versioned script tag),
+  reusing the `[data-copy]` button. `FormsController` derives the installation
+  base URL from the request; empty host → no panel (so path-only test requests
+  and the new-form screen show nothing).
+- Tests (+14, 409 total, 2445 assertions): `SubmitHtmlResponseTest` (HTML
+  success stores + renders, HTML error message + safe back-link, non-http
+  Referer rejected, well-formed page, and three JSON-contract regressions:
+  no-Accept, Accept application/json, and json-preferred-over-html);
+  `EmbedAssetTest` (cache headers + body markers, size ceiling, `node --check`
+  parse gate skipped if node absent, manual page dev-only 200 vs 404);
+  `EmbedPanelTest` (snippet key/URL/version present on edit, absent on new).
+  Full suite green. Also smoke-tested the running dev server: text/html POST →
+  HTML "Message sent" page, application/json POST → JSON, `/embed/osf.js` served.
+  `tests/embed-manual.html` added for human-driven state checks against the live
+  dev API (Mailpit for delivery).
+- Docs: README gained an "Embedding a form" end-user section (two-paste snippet,
+  no-JS guarantee sentence, theming-variable table, events, `data-osf-ui`,
+  manual page) and a content-negotiation note on the submit endpoint.
+- Deviations from prompt:
+  1. `osf.js` is 15.4 KB unminified, over the brief's 12 KB target. The locked
+     rich-UX feature set does not fit 12 KB as readable/unminified source (even
+     fully de-indented/comment-stripped it is ~12.5 KB); "no build step" +
+     "unminified" preclude minifying. Kept readable (2-space indent to trim),
+     size-guarded at 16 KB against regression. Flagged in QUESTIONS.md #2 for
+     ratification.
+  2. No-JS submissions are accepted-and-silently-discarded (no email) because
+     the LOCKED token stage treats a missing token as a bot signal; not changed
+     (out of scope + security). The no-JS HTML rendering ships; delivery of no-JS
+     posts awaits an architect ruling — QUESTIONS.md #1.
+  3. `osf.js` uses 2-space indentation (repo default is 4) purely to reduce the
+     shipped asset's size.

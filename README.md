@@ -289,6 +289,69 @@ From the command line, `php bin/osf mail:status` prints the current mail
 configuration (never any secret) and runs the same three DNS checks as live
 lookups for the configured From domain.
 
+## Embedding a form
+
+Put a form on any website in two pastes. The admin **form-edit** screen shows
+this snippet ready-filled with your form's key and this installation's URL
+(**Embed code** panel, with a copy button).
+
+**1 — a plain HTML form** (edit the fields to taste; keep the `<form>` wrapper
+and its `data-osf-*` attributes):
+
+```html
+<form action="https://forms.example.com/v1/form/osf_YOURKEY/submit" method="post"
+      data-osf-key="osf_YOURKEY" data-osf-url="https://forms.example.com">
+  <label>Your email <input type="email" name="email" required></label>
+  <label>Message <textarea name="message" required></textarea></label>
+  <button type="submit">Send</button>
+</form>
+```
+
+**2 — one script line** (anywhere on the page; `?v=` busts the long cache when
+you upgrade):
+
+```html
+<script src="https://forms.example.com/embed/osf.js?v=0.0.1" defer></script>
+```
+
+That is the whole integration — no build step, no dependencies, no other
+markup. Multiple forms on one page each initialise independently.
+
+**No-JavaScript guarantee.** With the script absent, blocked or broken the form
+still POSTs directly to the endpoint (its `action`) and the server answers with
+a readable "Message sent" / error HTML page that links back — so a form is never
+dead. (Whether a *no-JS* submission is relayed by email depends on the token
+policy; see `QUESTIONS.md`.)
+
+With the script running, submission goes over `fetch`: a submitting spinner, an
+in-page "Message sent" confirmation and a "Send another" reset, inline
+field-level errors (e.g. a bad email attaches to the email input), invisible
+token refresh-and-retry on expiry, an injected honeypot, and — when the form has
+Turnstile enabled — the Cloudflare widget above the submit button.
+
+**Theming.** The script injects one namespaced `<style>` (every class is
+`.osf-`-prefixed; no global styles are touched) driven by CSS variables you can
+override on the page:
+
+| Variable | Controls |
+| --- | --- |
+| `--osf-accent` / `--osf-on-accent` | button colour / its text |
+| `--osf-error` | error text and field outline |
+| `--osf-radius` | corner radius |
+| `--osf-surface` / `--osf-overlay-bg` | dialog background / the success overlay |
+| `--osf-border` | the submitted-panel border |
+
+It respects `prefers-reduced-motion` and the success dialog is focus-trapped
+(Esc or OK closes, focus returns to the form).
+
+**Events.** The script dispatches CustomEvents on the `<form>` element for
+integrators: `osf:submit`, `osf:success` (`detail.data` is the JSON response)
+and `osf:error` (`detail.code`, `detail.message`). Add `data-osf-ui="none"` to
+the form to suppress all built-in UI and drive your own from these events.
+
+There is a manual test checklist for every state at `/embed/manual.html`
+(dev only), documented at the top of `tests/embed-manual.html`.
+
 ## Public API (v1)
 
 The public API is JSON-only and CORS-aware. All responses share one shape:
@@ -345,6 +408,12 @@ address; the submitter's `email` field, when valid, becomes `Reply-To` and
 nothing else the submitter typed can reach a mail header. With no SMTP host
 configured the app runs storage-only and submissions stay at `received`.
 `OPTIONS` on both routes returns a `204` CORS preflight.
+
+The response is JSON by default and for any client that sends
+`Accept: application/json` (the embed `fetch` does). A native browser form POST
+— a top-level navigation that prefers `text/html` — instead receives a
+self-contained HTML success/error page (the no-JS fallback); the JSON contract
+above is unchanged for API and `fetch` callers.
 
 ## License
 MIT — see LICENSE.
