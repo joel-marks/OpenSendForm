@@ -7,6 +7,7 @@ namespace OpenSendForm;
 use OpenSendForm\Form\FormRepository;
 use OpenSendForm\Http\ApiResponse;
 use OpenSendForm\Http\OriginMatcher;
+use OpenSendForm\Http\SubmitHtmlPage;
 use OpenSendForm\Security\SubmitToken;
 use OpenSendForm\Submit\SubmitContext;
 use OpenSendForm\Submit\SubmitPipeline;
@@ -34,6 +35,26 @@ final class Routes
         }
 
         $app->get('/health', [self::class, 'health']);
+
+        // The embed client artefact, served with a long immutable cache (the
+        // snippet busts it with a ?v= query). In production Apache serves the
+        // static file directly; this route is the front-controller fallback and
+        // the seam the header test drives.
+        $app->get(
+            '/embed/osf.js',
+            function (ServerRequestInterface $req, ResponseInterface $res) use ($container): ResponseInterface {
+                return Routes::embedScript($container, $req, $res);
+            }
+        );
+
+        // A manual, human-driven test checklist for the embed states, served
+        // only in the dev environment (404 otherwise) so it never ships live.
+        $app->get(
+            '/embed/manual.html',
+            function (ServerRequestInterface $req, ResponseInterface $res) use ($container): ResponseInterface {
+                return Routes::embedManual($container, $req, $res);
+            }
+        );
 
         // Non-static closures: Slim's CallableResolver binds route Closures to
         // the container ($this), which fails for static closures.
@@ -213,13 +234,106 @@ final class Routes
         $context = new SubmitContext($request, $args['form_key'] ?? null);
         $outcome = $pipeline->run($context);
 
-        $result = $outcome->isSuccess()
-            ? ApiResponse::success($response)
-            : ApiResponse::error($response, $outcome->status(), $outcome->code(), $outcome->message());
+        // Content negotiation: a native (no-JS) browser form POST is a top-level
+        // navigation that prefers text/html, so it gets a readable HTML page.
+        // Every API/fetch client (the embed JS sends Accept: application/json,
+        // programmatic callers send */* or nothing) keeps the frozen JSON
+        // contract.
+        if (self::prefersHtml($request)) {
+            $back = self::safeBackUrl(self::header($request, 'Referer'));
+            $result = SubmitHtmlPage::render($response, $outcome, $back);
+        } else {
+            $result = $outcome->isSuccess()
+                ? ApiResponse::success($response)
+                : ApiResponse::error($response, $outcome->status(), $outcome->code(), $outcome->message());
+        }
 
         // CORS headers ride on responses only once the origin has been
         // validated (matchedOrigin set by the origin stage).
         return ApiResponse::withCors($result, $context->matchedOrigin);
+    }
+
+    /**
+     * GET /embed/osf.js — serve the embed client artefact with a long,
+     * immutable cache. The snippet references it with a ?v= query, so the
+     * bytes at a given URL never change.
+     */
+    private static function embedScript(
+        ContainerInterface $container,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $file = dirname(__DIR__) . '/public/embed/osf.js';
+        if (!is_file($file)) {
+            return $response->withStatus(404);
+        }
+
+        $response->getBody()->write((string) file_get_contents($file));
+
+        return $response
+            ->withHeader('Content-Type', 'application/javascript; charset=utf-8')
+            ->withHeader('Cache-Control', 'public, max-age=31536000, immutable')
+            ->withStatus(200);
+    }
+
+    /**
+     * GET /embed/manual.html — the manual embed-testing checklist, served only
+     * when APP_ENV is 'dev'. In every other environment it 404s so it can never
+     * be reached on a real installation.
+     */
+    private static function embedManual(
+        ContainerInterface $container,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        /** @var Config $config */
+        $config = $container->get(Config::class);
+        $file = dirname(__DIR__) . '/tests/embed-manual.html';
+
+        if ($config->appEnv() !== 'dev' || !is_file($file)) {
+            return $response->withStatus(404);
+        }
+
+        $response->getBody()->write((string) file_get_contents($file));
+
+        return $response
+            ->withHeader('Content-Type', 'text/html; charset=utf-8')
+            ->withStatus(200);
+    }
+
+    /**
+     * Whether the client prefers an HTML response over the JSON contract. True
+     * only for a request that positively wants text/html and does not ask for
+     * JSON — i.e. a native browser navigation. The absence of an Accept header
+     * (typical of API/curl callers) keeps the JSON default.
+     */
+    private static function prefersHtml(ServerRequestInterface $request): bool
+    {
+        $accept = strtolower($request->getHeaderLine('Accept'));
+        if ($accept === '' || strpos($accept, 'application/json') !== false) {
+            return false;
+        }
+
+        return strpos($accept, 'text/html') !== false;
+    }
+
+    /**
+     * Validate a Referer for use as the "back to the form" link: only absolute
+     * http(s) URLs are echoed, so nothing else (javascript:, data:, relative)
+     * can be reflected into the page.
+     */
+    private static function safeBackUrl(?string $referer): ?string
+    {
+        if ($referer === null) {
+            return null;
+        }
+
+        $scheme = strtolower((string) parse_url($referer, PHP_URL_SCHEME));
+        if (($scheme === 'http' || $scheme === 'https') && parse_url($referer, PHP_URL_HOST) !== null) {
+            return $referer;
+        }
+
+        return null;
     }
 
     /**
