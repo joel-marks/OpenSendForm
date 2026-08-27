@@ -1,0 +1,52 @@
+# OpenSendForm — public/ web-server rules (Apache).
+#
+# public/ is the document root under the recommended setup, and the web root's
+# public/ subfolder under the fallback layout. Everything here is safe to serve.
+
+# --- Front controller ------------------------------------------------------
+# Route every request that isn't a real file or directory to index.php, so the
+# app's router can handle it. Static assets (CSS/JS under assets/, the embed
+# script) are real files and are served directly, untouched by this rule.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # If someone points the document root one level too high (at the app folder
+    # instead of public/), send them into public/ so the app still loads.
+    # Harmless under the correct layout because /public then doesn't exist here.
+    RewriteRule ^index\.php$ - [L]
+
+    # Don't rewrite requests that map to a file or directory that exists.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Everything else goes through the front controller.
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# --- Compression -----------------------------------------------------------
+# Gzip text responses (HTML, CSS, JS, JSON) to cut transfer size. Skipped
+# automatically on hosts without mod_deflate.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css \
+        application/javascript application/json image/svg+xml
+</IfModule>
+
+# --- Caching for static assets --------------------------------------------
+# Tell browsers to cache CSS/JS/images for a month. The embed script and admin
+# assets are versioned by the app, so a long cache is safe and speeds up repeat
+# visits. HTML is never cached here so admin pages always reload fresh.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 month"
+</IfModule>
+
+# --- Security niceties -----------------------------------------------------
+# Never serve the directory listing if index.php is missing for some reason.
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>

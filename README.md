@@ -21,9 +21,9 @@ Cloudflare Turnstile. Server-rendered admin panel with 2FA.
 ## Installing
 
 OpenSendForm is designed to install on ordinary shared cPanel/PHP hosting with
-no command line — just a file upload and a short browser wizard. (It is still
-pre-alpha; the pieces below work, but the release zip lands in a later
-increment.)
+no command line — just a file upload and a short browser wizard. Grab the
+release zip (`opensendform-vX.Y.Z.zip`) — see **Releases & upgrading** below for
+where to get it and how to upgrade later.
 
 1. **Upload and extract the zip** into a folder on your host, and point a
    domain or subdomain at that folder's `public/` directory (its document
@@ -51,6 +51,71 @@ saved and can be delivered once mail is set up.
 
 **Re-running the installer** is deliberate: delete the file
 `var/install.lock` with your host's file manager, then reload `/install`.
+
+## Releases & upgrading
+
+### The release zip
+
+Each release is a single file, `opensendform-vX.Y.Z.zip`. It contains
+everything a shared-hosting install needs — the application code, its PHP
+dependencies already bundled in `vendor/`, the database migrations, `bin/`, the
+`.htaccess` files and a short `INSTALL.txt`. **You never run Composer** and there
+is no build step. Unzipping gives you one folder, `opensendform/`, whose
+contents you deploy.
+
+### Installing (cPanel walk-through)
+
+1. **Create the site.** In cPanel, create the subdomain (or domain) you want the
+   service to answer on — for example `forms.example.com`.
+2. **Upload and extract** `opensendform-vX.Y.Z.zip` into that site's folder
+   using the cPanel File Manager, then extract it there.
+3. **Point the document root at `public/`.** In *Domains* (or *Subdomains*),
+   set the site's document root to the `public/` directory inside the extracted
+   `opensendform/` folder. This keeps everything else out of the web root.
+   *(Host won't let you move the document root? See the fallback below.)*
+4. **Visit the site** in a browser and follow the installer at `/install`
+   (hosting check → database → administrator → finish), then sign in at
+   `/admin/login`. Set up email delivery from the admin panel.
+
+**Fallback layout for docroot-locked hosts.** If your host won't let you change
+the document root, upload the whole `opensendform/` folder into the existing web
+root instead and visit `.../public/`. The bundled `.htaccess` files are the
+safety net for this case: every server-side folder (`src/`, `templates/`,
+`migrations/`, `bin/`, `vendor/`, `var/`) ships a deny-all `.htaccess`, so on an
+Apache host a browser still can't reach anything but `public/`. (Deny-all rules
+are Apache-specific; the recommended `public/`-as-document-root layout does not
+depend on them.)
+
+### Upgrading
+
+Upgrading is a file replace plus a migration:
+
+1. **Download and extract** the new `opensendform-vX.Y.Z.zip`.
+2. **Copy the new files over your existing installation, replacing everything
+   *except* the `var/` folder.** Do not delete or overwrite `var/` — that is
+   where your settings, database and install lock live.
+3. **Apply any new database migrations** by running
+
+   ```
+   php bin/osf migrate
+   ```
+
+   or, if you don't have shell access, open the admin dashboard: when the
+   schema is behind, a red *update required* banner appears and links to the
+   same step. `bin/osf version` prints the app version, the current schema
+   version and how many migrations are pending, so you can confirm before and
+   after.
+
+**What is preserved vs replaced.** Everything under `var/` survives an upgrade —
+that is `var/config.php` (your settings), the SQLite database under `var/data/`,
+and `var/install.lock`. Everything else (the application code, `vendor/`, the
+migrations, `bin/`, the `.htaccess` files) is replaced by the new release. This
+is why the upgrade step is safe: your data never lives in the files you
+overwrite.
+
+> Releases are attached to the project's GitHub releases page; automated
+> publishing is planned. To build a zip yourself from a checkout, run
+> `php bin/build-release.php` in the dev container (see *Development*).
 
 ## Development
 This repo is developed AI-assisted (Claude Code in a devcontainer)

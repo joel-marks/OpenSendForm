@@ -148,3 +148,19 @@
    expected to disable mail via env, a dedicated `MAIL_ENABLED` flag (empty by
    default) would be clearer than overloading `SMTP_HOST` — flagging for the
    installer increment.
+
+## Increment 8
+
+1. **The zip PHP extension is not available in this dev container — DEVIATION,
+   resolved without asking.** The task prompt stated the build tooling would use
+   "PHP + zip extension". In this container `ZipArchive` is not compiled into
+   PHP (`php -m` shows no `zip`; there is no `zip.so`), though the `zip` and
+   `unzip` CLI binaries are present. Rather than add/build an extension (which
+   is not a Composer dependency and would be a container change), the
+   build/verify scripts use `ZipArchive` when it is loaded and fall back to the
+   `zip`/`unzip` CLIs otherwise (`bin/release_lib.php`: `osf_zip_dir`,
+   `osf_unzip`). The CI `package` job installs PHP with the `zip` extension, so
+   CI exercises the `ZipArchive` path; local dev-container runs exercise the CLI
+   fallback. Both produce/verify the same artefact. No architect input needed —
+   flagged only so the extension gap in the base image is on record (worth
+   adding `zip` to the devcontainer Dockerfile in a future housekeeping pass).

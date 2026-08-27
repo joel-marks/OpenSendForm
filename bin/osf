@@ -18,6 +18,7 @@ use OpenSendForm\Mail\SystemDnsResolver;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
 use OpenSendForm\Submission\SubmissionRepository;
+use OpenSendForm\Version;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -49,6 +50,13 @@ if ($command === 'install:status') {
 // before the browser installer has run. Safe to run repeatedly.
 if ($command === 'migrate') {
     exit(cmdMigrate());
+}
+
+// version reports the app version plus the live schema state. It runs BEFORE
+// the auto-migrate boot below on purpose: migrating first would always report
+// zero pending, defeating the point of the pending-migration count.
+if ($command === 'version') {
+    exit(cmdVersion());
 }
 
 try {
@@ -565,6 +573,51 @@ function cmdMigrate(): int
 }
 
 /**
+ * version — print the application version plus the live schema state (current
+ * schema version = highest applied migration, and how many migrations are
+ * still pending). This is the CLI companion to the dashboard's staleness
+ * banner: after replacing the files with a new release, `bin/osf version` tells
+ * you at a glance whether you still need to run `bin/osf migrate`.
+ *
+ * It reads the database but never writes to it — in particular it does NOT
+ * auto-migrate, so the pending count is truthful. On a system that has not been
+ * installed yet (and with no DB_DSN override in the environment) it reports the
+ * app version only and leaves the schema fields as not-applicable, so it never
+ * creates a stray database.
+ */
+function cmdVersion(): int
+{
+    fwrite(STDOUT, 'OpenSendForm ' . Version::STRING . "\n");
+
+    $paths = Paths::production();
+    $dsnOverride = getenv('DB_DSN');
+    $haveDb = $paths->isInstalled() || (is_string($dsnOverride) && $dsnOverride !== '');
+
+    if (!$haveDb) {
+        fwrite(STDOUT, "Schema version:     n/a (not installed)\n");
+        fwrite(STDOUT, "Pending migrations: n/a (not installed)\n");
+        return 0;
+    }
+
+    try {
+        $config = Config::load($paths->configPath);
+        $db = Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
+        $runner = new MigrationRunner($db, $paths->migrationsPath);
+        $applied = $runner->appliedVersions();
+        $schema = $applied === [] ? 0 : max($applied);
+        $pending = $runner->pendingCount();
+    } catch (Throwable $e) {
+        fwrite(STDERR, 'Error reading schema: ' . $e->getMessage() . "\n");
+        return 1;
+    }
+
+    fwrite(STDOUT, sprintf("Schema version:     %d\n", $schema));
+    fwrite(STDOUT, sprintf("Pending migrations: %d\n", $pending));
+
+    return 0;
+}
+
+/**
  * install:status — report whether the app is installed, without touching the
  * database. Prints the config file's presence and, when the lock exists, its
  * recorded install timestamp and version. Never prints any secret.
@@ -630,6 +683,7 @@ function usage(): string
       bin/osf submissions:list [--status=STATUS]
       bin/osf install:status
       bin/osf migrate
+      bin/osf version
 
     Notes:
       --origin may be repeated to allow more than one origin.
@@ -652,6 +706,8 @@ function usage(): string
         refuses to run before the browser installer has produced a config.
         Every other command already auto-migrates at boot, but this is the
         way to apply an update BEFORE running anything else. Safe to re-run.
+      version prints the app version, the current schema version and the
+        number of pending migrations — read-only, and never auto-migrates.
 
     TXT;
 }

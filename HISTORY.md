@@ -1047,3 +1047,60 @@
   path, refuses the last active admin, deleting inactive always allowed,
   refuses an unknown id, refuses a non-numeric id). Full suite green.
 - No new Composer dependencies. Nothing logged to QUESTIONS.md.
+
+## 2026-08-27 — Increment 8: packaging (release zip, versioning, upgrade path)
+- Branch: feature/increment-8-packaging (off latest main).
+- Version bumped to **0.1.0** — the first packaged version. `src/Version.php`
+  stays the single source of truth; the build reads it to name the zip and
+  everything else derives from it. `VersionTest` locks the semver shape and the
+  0.1.0 value.
+- `bin/build-release.php`: PHP build script (dev container / CI only). Exports
+  committed HEAD via `git archive` into a temp `opensendform/` folder, runs
+  `composer install --no-dev --optimize-autoloader` inside it, prunes the
+  exclusion list, writes `INSTALL.txt` (short: upload → docroot at public/ or
+  fallback → visit /install; upgrade: replace all except var/, run migrate) and
+  `vendor/.htaccess`, then zips to `dist/opensendform-v{VERSION}.zip`. `dist/`
+  gitignored. Excluded: tests/, .devcontainer, .github, .claude, .git,
+  .gitignore, phpunit.xml, the four state files, and the build tooling itself
+  (build-release/verify-release/release_lib). `dev-router.php` ships (inert in
+  prod); `tests/embed-manual.html` does not (tests/ excluded wholesale).
+- `bin/verify-release.php`: unzips the artefact to a temp dir and asserts no
+  excluded path leaked, every required path is present (public/index.php,
+  public/embed/osf.js, the seven-file .htaccess set, vendor/autoload.php,
+  migrations/*.sql, bin/osf, LICENSE, INSTALL.txt, src/Version.php), the shipped
+  autoloader resolves `OpenSendForm\Version` (real `php -r` smoke), and the
+  embedded version matches src/Version.php + the zip name + INSTALL.txt.
+  Non-zero exit on any failure. Manually confirmed it fails on a missing zip and
+  on a zip with an injected excluded path.
+- `bin/release_lib.php`: shared, side-effect-free helpers (version read,
+  recursive delete, checked command runner, zip/unzip). zip/unzip prefer
+  `ZipArchive` and fall back to the `zip`/`unzip` CLIs — this container has no
+  zip extension (see QUESTIONS.md Increment 8 #1).
+- `.htaccess` set: deny-all in var/, migrations/, bin/, templates/, src/
+  (committed; a `.gitignore` exception tracks var/.htaccess) and vendor/
+  (written at build). `public/.htaccess`: front-controller rewrite + gzip
+  (mod_deflate) + one-month cache for static assets (mod_expires) + `-Indexes`.
+  Each rule carries a plain-language comment. Only the fallback layout relies on
+  the deny files; the recommended docroot-at-public/ layout does not.
+- `bin/osf version`: prints app version + current schema version (highest
+  applied migration) + pending-migration count. Runs BEFORE the auto-migrate
+  boot so the pending count is truthful; read-only; reports n/a when not
+  installed (and no DB_DSN override) so it never creates a stray database.
+- CI: new `package` job (PHP 8.1 leg, `zip` extension) runs build + verify on
+  every PR/push to main and uploads the zip via `actions/upload-artifact@v4`
+  (`if-no-files-found: error`). Existing `tests` job unchanged.
+- README: new "Releases & upgrading" section — the release zip's contents, the
+  cPanel install walk-through (create subdomain → upload+extract → docroot to
+  public/ → /install), the fallback .htaccess layout for docroot-locked hosts,
+  the upgrade procedure (replace all except var/, then `bin/osf migrate` or the
+  dashboard banner), and exactly what var/ preserves. Installing intro updated
+  (the zip now exists).
+- Tests (+6, 435 total): `VersionTest` (semver + 0.1.0), `Cli/CliVersionTest`
+  (`bin/osf version` against a throwaway DB reports schema 0 and all migrations
+  pending — proves it does not auto-migrate first), `Release/ReleaseManifestTest`
+  (tokenises both scripts and asserts the build/verify exclusion lists stay in
+  sync, plus spot-checks the required list). The build/verify scripts themselves
+  are exercised by the CI package job, not PHPUnit. Full suite green.
+- Deviation: the zip PHP extension the prompt assumed is absent from the
+  container; handled with a ZipArchive-or-CLI fallback + `zip` ext in CI. Logged
+  to QUESTIONS.md Increment 8 #1. No new Composer dependencies.

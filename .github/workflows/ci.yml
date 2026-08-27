@@ -43,3 +43,39 @@ jobs:
 
       - name: Run test suite
         run: composer test
+
+  # Build the release zip and verify its contents on every PR/push. Runs the
+  # real bin/build-release.php + bin/verify-release.php and uploads the zip as a
+  # downloadable workflow artifact so a maintainer can grab it for a manual
+  # GitHub Release (release automation is a later increment). PHP 8.1 only — the
+  # minimum supported version — since the artefact is the same on any leg.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Full history is not needed, but the build uses `git archive HEAD`, so
+        # the single checked-out commit is enough.
+
+      - name: Setup PHP 8.1
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          # zip: the build/verify scripts use ZipArchive when it is available.
+          extensions: pdo_sqlite, zip
+          coverage: none
+        env:
+          XDEBUG_MODE: off
+
+      - name: Build release zip
+        run: php bin/build-release.php
+
+      - name: Verify release zip
+        run: php bin/verify-release.php
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensendform-release-zip
+          path: dist/opensendform-v*.zip
+          if-no-files-found: error
