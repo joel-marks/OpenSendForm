@@ -137,8 +137,10 @@ main.container {
     border: 0;
 }
 
-/* --- Header bar: two compact rows, both on --osf-bg-raised, no divider
-   between them — a single hairline sits under the second (tab) row only. -- */
+/* --- Header bar: two compact rows on DIFFERENT surfaces (GitHub alignment,
+   fix/5d-polish-v3) — top row --osf-bg-inset, tab row --osf-bg — with a
+   single hairline under the second (tab) row only, no divider between
+   them. -- */
 
 .osf-header {
     background: var(--osf-bg-inset);

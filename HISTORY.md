@@ -1452,3 +1452,31 @@
   buttons' presentation becoming the status switch (same endpoints, same
   guards). Nothing logged to QUESTIONS.md — no architecture/security/scope
   blockers this sprint.
+
+## 2026-08-27 — Micro-patch: tab-row surface (fix/tab-row-surface)
+- Branch: fix/tab-row-surface (off latest main, PR #25 merged).
+- Investigated a reported defect: the tab row (`.osf-tabnav`) rendering on
+  the grey raised surface instead of `--osf-bg`. Live-verified via a
+  headless-Chromium (Playwright) render of the actual template + CSS in
+  both themes: `.osf-header`/`.osf-tabnav` already computed exactly
+  `--osf-bg-inset`/`--osf-bg` as ruled — no shadowing rule, shared wrapper,
+  or specificity bug existed on main. The only real defect was a stale
+  doc-comment above `.osf-header` in `admin.css` (leftover from v2's "same
+  surface" reading, claiming both rows sat on `--osf-bg-raised`);
+  corrected to describe the v3 ruling.
+- Hardened `DesignSystemTest::testHeaderIsTwoRowsOnGithubAlignedSurfacesWithOneHairlineUnderTheSecond`:
+  exact-token regex for the tab row's `var(--osf-bg)` (the prior
+  `assertStringContainsString('--osf-bg', ...)` would also pass for
+  `--osf-bg-raised`, a substring match bug), an explicit
+  no-raised-surface assertion on the top row, a sibling-adjacency
+  assertion (`</header>` immediately followed by the tab `<nav>`, so no
+  wrapper can be reintroduced between them), and a single-definition
+  assertion per selector. Confirmed the strengthened test fails against a
+  reintroduced `--osf-bg-raised` regression, then reverted the probe.
+  Full suite green: 455 tests, 3030 assertions.
+- Deviation: CLAUDE.md's definition-of-done implies a defect to fix: none
+  was found in the ruled CSS itself, only in a comment. Proceeded with the
+  test-hardening + comment-correction as the substantive fix, per the task
+  prompt's own item 2 (strengthen the test) and item 1's "or fix so the
+  computed background is exactly var(--osf-bg)" (already true, now also
+  proven by the harness rather than just asserted).

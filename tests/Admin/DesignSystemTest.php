@@ -245,7 +245,17 @@ final class DesignSystemTest extends TestCase
         self::assertMatchesRegularExpression('/\.osf-header\s*\{([^}]*)\}/s', $css, '.osf-header rule not found');
         preg_match('/\.osf-header\s*\{([^}]*)\}/s', $css, $headerBlock);
         // Top row: near-black --osf-bg-inset, matching github.com's header.
+        // Exact token match (word-boundary on the closing paren) so a stray
+        // --osf-bg-raised/--osf-bg-overlay can't slip past a loose substring
+        // check — those tokens contain "--osf-bg-inset" is not a risk here,
+        // but the mirrored --osf-bg-raised exclusion below guards the case
+        // that actually broke the tab row.
         self::assertStringContainsString('--osf-bg-inset', $headerBlock[1]);
+        self::assertStringNotContainsString(
+            '--osf-bg-raised',
+            $headerBlock[1],
+            'Top row must not reference the raised surface'
+        );
         self::assertStringNotContainsString(
             'border-bottom',
             $headerBlock[1],
@@ -254,8 +264,16 @@ final class DesignSystemTest extends TestCase
 
         self::assertMatchesRegularExpression('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, '.osf-tabnav rule not found');
         preg_match('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, $tabnavBlock);
-        // Tab row: page background --osf-bg, distinct from the top row.
-        self::assertStringContainsString('--osf-bg', $tabnavBlock[1]);
+        // Tab row: page background --osf-bg, distinct from the top row. Match
+        // the exact token (not followed by "-raised"/"-inset"/"-overlay") —
+        // assertStringContainsString('--osf-bg', ...) alone would also pass
+        // for "--osf-bg-raised", which is exactly the regression this test
+        // must catch.
+        self::assertMatchesRegularExpression(
+            '/background:\s*var\(--osf-bg\)/',
+            $tabnavBlock[1],
+            'Tab row background must resolve to exactly var(--osf-bg)'
+        );
         self::assertStringNotContainsString('--osf-bg-raised', $tabnavBlock[1]);
         self::assertStringNotContainsString('--osf-bg-inset', $tabnavBlock[1]);
         self::assertStringContainsString(
@@ -263,6 +281,23 @@ final class DesignSystemTest extends TestCase
             $tabnavBlock[1],
             'The single hairline sits under the second (tab) row'
         );
+
+        // No surface between the two rows: they must be direct siblings in
+        // the markup (header closes, then the tab <nav> opens immediately),
+        // so no wrapper element could carry its own (possibly stale/raised)
+        // background between them.
+        $nav = self::read('templates/admin/_nav.php');
+        self::assertMatchesRegularExpression(
+            '/<\/header>\s*<nav class="osf-tabnav"/',
+            $nav,
+            'A wrapper between the header and the tab row could shadow the ruled surfaces'
+        );
+
+        // No other rule in the stylesheet backgrounds .osf-header or
+        // .osf-tabnav (e.g. a broader "header, nav" or wrapper selector) —
+        // each selector must be declared exactly once.
+        self::assertSame(1, preg_match_all('/\.osf-header\s*\{/', $css), 'Exactly one .osf-header rule expected');
+        self::assertSame(1, preg_match_all('/\.osf-tabnav\s*\{/', $css), 'Exactly one .osf-tabnav rule expected');
     }
 
     // --- Header/tab bar: full-width surfaces, content aligned to the column
