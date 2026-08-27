@@ -13,6 +13,7 @@ use OpenSendForm\Form\FormRepository;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
 use OpenSendForm\Submission\SubmissionRepository;
+use OpenSendForm\Tests\Support\AdminUiFieldWrapperAssertions;
 use OpenSendForm\Tests\Support\FakeMailer;
 use OpenSendForm\Tests\Support\FakeSession;
 use OpenSendForm\Tests\Support\FixedClock;
@@ -638,9 +639,17 @@ final class AdminUiTest extends TestCase
         // second of the two header rows).
         self::assertStringContainsString('class="osf-tabnav"', $body);
         self::assertMatchesRegularExpression(
-            '/<a class="osf-tab-link" href="\/admin" aria-current="page">Dashboard<\/a>/',
+            '/<a class="osf-tab-link" href="\/admin" aria-current="page"><svg[^>]*>.*?<\/svg> Dashboard<\/a>/s',
             $body
         );
+        // Every tab carries its Lucide icon before the label.
+        foreach (['Dashboard', 'Forms', 'Submissions', 'Email', 'Admins'] as $label) {
+            self::assertMatchesRegularExpression(
+                '/<a class="osf-tab-link"[^>]*><svg[^>]*>.*?<\/svg> ' . $label . '<\/a>/s',
+                $body,
+                "{$label} tab is missing its icon"
+            );
+        }
         // Account is a header control (a dropdown trigger), not a tab.
         self::assertStringNotContainsString('>Account<', $body);
 
@@ -701,6 +710,36 @@ final class AdminUiTest extends TestCase
                     self::assertStringContainsString('src=', $tag, "Inline <script> in {$file}: {$tag}");
                 }
             }
+        }
+    }
+
+    // --- Field-spacing audit: no orphan controls ---------------------------
+
+    public function testEveryAdminScreenWrapsControlsInTheFieldPattern(): void
+    {
+        // Checked unauthenticated, before login changes the redirect target.
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $this->get('/admin/login')->getBody(),
+            'login'
+        );
+
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $this->login();
+
+        $routes = [
+            'dashboard'     => '/admin',
+            'forms list'    => '/admin/forms',
+            'form create'   => '/admin/forms/new',
+            'form edit'     => '/admin/forms/' . $form['id'] . '/edit',
+            'submissions'   => '/admin/submissions',
+            'mail'          => '/admin/mail',
+            'account'       => '/admin/account',
+            'admins'        => '/admin/admins',
+        ];
+
+        foreach ($routes as $label => $route) {
+            $body = (string) $this->get($route)->getBody();
+            AdminUiFieldWrapperAssertions::assertNoOrphanControls($body, $label);
         }
     }
 

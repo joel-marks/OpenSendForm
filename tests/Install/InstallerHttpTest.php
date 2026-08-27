@@ -7,6 +7,7 @@ namespace OpenSendForm\Tests\Install;
 use OpenSendForm\AppFactory;
 use OpenSendForm\Config;
 use OpenSendForm\Install\Paths;
+use OpenSendForm\Tests\Support\AdminUiFieldWrapperAssertions;
 use OpenSendForm\Tests\Support\FakeSession;
 use OpenSendForm\Tests\Support\FixedClock;
 use PHPUnit\Framework\TestCase;
@@ -267,6 +268,25 @@ final class InstallerHttpTest extends TestCase
                 }
             }
         }
+    }
+
+    // --- Field-spacing audit: no orphan controls ---------------------------
+
+    /**
+     * Every visible input/select/textarea must sit inside an .osf-field
+     * wrapper (fix/5d-polish-v3's systematic field-spacing audit). Hidden
+     * inputs and the CSRF field are exempt.
+     */
+    public function testEveryInstallStepWrapsControlsInTheFieldPattern(): void
+    {
+        $welcome = (string) $this->get('/install')->getBody();
+        $dbPage = $this->get('/install/database');
+        $this->post('/install/database', ['_csrf' => $this->csrfFrom($dbPage), 'db_driver' => 'sqlite']);
+        $adminPage = $this->get('/install/admin');
+
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls($welcome, 'install/welcome');
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls((string) $dbPage->getBody(), 'install/database');
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls((string) $adminPage->getBody(), 'install/admin');
     }
 
     // --- Helpers ----------------------------------------------------------
