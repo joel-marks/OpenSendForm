@@ -9,9 +9,11 @@ FROM mcr.microsoft.com/devcontainers/php:1-8.1-bookworm
 # sqlite3 CLI for inspecting the dev database.
 # pdo_sqlite ships enabled with PHP; pdo_mysql added for the optional
 # MySQL storage path so both backends are testable in dev.
+# zip (needs libzip-dev) lets the release build use ZipArchive natively
+# instead of the zip/unzip CLI fallback — closes the Increment 8 base-image gap.
 RUN rm -f /etc/apt/sources.list.d/yarn*.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends sqlite3 \
-    && docker-php-ext-install pdo_mysql \
+    && apt-get install -y --no-install-recommends sqlite3 libzip-dev \
+    && docker-php-ext-install pdo_mysql zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
