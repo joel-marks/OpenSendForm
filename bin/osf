@@ -43,6 +43,14 @@ if ($command === 'install:status') {
     exit(cmdInstallStatus());
 }
 
+// migrate is the explicit, human-run counterpart to the silent auto-migrate
+// every other command performs at boot below: it reports what it did instead
+// of applying pending migrations quietly, and it refuses to touch a database
+// before the browser installer has run. Safe to run repeatedly.
+if ($command === 'migrate') {
+    exit(cmdMigrate());
+}
+
 try {
     $paths = Paths::production();
     $config = Config::load($paths->configPath);
@@ -481,6 +489,41 @@ function cmdSubmissionsList(Database $db, array $args): int
 }
 
 /**
+ * migrate — apply any pending migrations to the installed database and report
+ * what it did. Refuses to run (exit 1) before the browser installer has
+ * produced a config file and lock; idempotent otherwise.
+ */
+function cmdMigrate(): int
+{
+    $paths = Paths::production();
+
+    if (!$paths->isInstalled()) {
+        fwrite(STDERR, "OpenSendForm is not installed yet — run the browser installer first.\n");
+        return 1;
+    }
+
+    try {
+        $config = Config::load($paths->configPath);
+        $db = Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
+        $applied = (new MigrationRunner($db, $paths->migrationsPath))->migrate();
+    } catch (Throwable $e) {
+        fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+        return 1;
+    }
+
+    if ($applied === []) {
+        fwrite(STDOUT, "Already up to date.\n");
+        return 0;
+    }
+
+    foreach ($applied as $file) {
+        fwrite(STDOUT, "Applied {$file}\n");
+    }
+
+    return 0;
+}
+
+/**
  * install:status — report whether the app is installed, without touching the
  * database. Prints the config file's presence and, when the lock exists, its
  * recorded install timestamp and version. Never prints any secret.
@@ -544,6 +587,7 @@ function usage(): string
       bin/osf mail:status
       bin/osf submissions:list [--status=STATUS]
       bin/osf install:status
+      bin/osf migrate
 
     Notes:
       --origin may be repeated to allow more than one origin.
@@ -559,6 +603,10 @@ function usage(): string
       submissions:list shows metadata only — never submitted content.
       install:status reports whether the browser installer has run (config +
         lock files); it never connects to or creates a database.
+      migrate applies any pending schema migrations and reports what it did;
+        refuses to run before the browser installer has produced a config.
+        Every other command already auto-migrates at boot, but this is the
+        way to apply an update BEFORE running anything else. Safe to re-run.
 
     TXT;
 }
