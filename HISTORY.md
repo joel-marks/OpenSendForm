@@ -1169,3 +1169,70 @@
 - Scope fence honoured: `public/embed/osf.js` and its injected styles, and the
   public API, are untouched. No new Composer dependencies. Nothing logged
   blocking to QUESTIONS.md (one assumption noted there).
+
+## 2026-08-27 — Patch: 5d polish (fix/5d-polish)
+- Branch: fix/5d-polish (off main, PR #21 merge point). Architect ruling
+  from a side-by-side review of the 5d design system against github.com
+  dark, addressing five gaps: palette accuracy, nav structure, spacing
+  discipline, and control consistency.
+- **Palette correction.** `tokens.css` values replaced wholesale with an
+  architect-supplied reference set captured directly from github.com's
+  deployed dark/light UI ("GitHub classic as deployed") — e.g. dark
+  `--osf-bg-raised` #151b23→#161b22, `--osf-text` #f0f6fc→#e6edf3,
+  `--osf-accent` #4493f8→#58a6ff, `--osf-border` #3d444d→#30363d; light
+  `--osf-accent-subtle` etc. now literal `rgba()` rather than hex+alpha.
+  Token NAMES unchanged; the previous @primer/primitives v11.10.0
+  vendoring is superseded (Primer's current published package has
+  diverged from what github.com itself renders — the file's docblock
+  records this explicitly, and the required "primer" provenance mention
+  is kept so `testVendoredAndEnhancementAssetsExist` still holds).
+- **Header/tab-nav split.** `_nav.php` rewritten: the header
+  (`.osf-header`) now carries ONLY the brand and right-aligned Docs
+  link/theme toggle/admin-name/logout; the five section links (Dashboard,
+  Forms, Submissions, Email, Admins) moved to a new GitHub-UnderlineNav-
+  style tab bar (`.osf-tabnav`/`.osf-tab-link`) directly beneath it, on
+  `--osf-bg` (not raised) with a hairline bottom border, a 2px
+  `--osf-accent-emphasis` underline on the active tab, and wrapping on
+  narrow viewports. "Account" is no longer a nav item — it lives solely
+  on the admin-name link in the header. Installer's chrome-free header
+  restructured to the same `.osf-header-inner`/`.osf-header-actions`
+  shape (brand left, "Setup" label right) for visual consistency, no tabs.
+- **Spacing system.** `tokens.css` gains `--osf-space-1..6` (4/8/12/16/
+  24/32px). Applied systematically through `admin.css`: table cells
+  (space-3 vertical/space-4 horizontal), labels (space-4 top/space-1
+  bottom), section/card padding (space-5), the page `<h1>` (no top
+  margin, space-5 bottom), buttons (space-2 vertical/space-4
+  horizontal), inputs (space-2/space-3), and a new `.osf-actions` flex
+  wrapper (space-2 gap) for button groups. Most other ad-hoc rem values
+  in the file were converted to the nearest token.
+- **Control consistency.** The root cause of Reactivate/Deactivate
+  rendering smaller than Delete/Edit/Disable was a `.osf-inline-form
+  button` override (0.3rem/0.85rem) applied only to form-wrapped
+  buttons — removed; every button now inherits one shared rule
+  (`inline-flex`, centred icon+label, fixed gap, uniform padding). The
+  Forms-list "Edit" link (previously a bare `<a>`, unstyled) is now a
+  `role="button" class="secondary"` control matching its row siblings.
+  `.osf-copy` utility buttons (Copy/Re-check) keep a deliberately
+  smaller compact size — a distinct utility tier, not an inconsistency.
+  Badges were already one shared `.osf-badge` size (only colour varies)
+  and inputs already shared one rule; both left in place, now on the
+  spacing scale.
+- Templates: `forms_list.php` and `admins.php` Actions cells,
+  `form_edit.php` and `admin_delete_confirm.php` submit/cancel rows, and
+  `recovery_codes.php`'s copy/download row all wrapped in
+  `.osf-actions`. No behavioural change — markup/CSS only.
+- Tests: `AdminUiTest::testTopNavRendersWithActiveLinkAndDocsLink` and
+  `DesignSystemTest::testNavIsATopHeaderWithDocsLinkAndNoSidebar`
+  rewritten for the header/tab-bar split (tab-bar presence, active-tab
+  class, Account-as-header-link-not-tab). No new tests needed for the
+  spacing/control changes (markup shape unchanged; the existing
+  no-hardcoded-colours grep test continues to pass since the corrected
+  hexes/rgba live only in tokens.css). Full suite green: 444 tests, 2882
+  assertions.
+- Manually verified against the running dev server (logged in via a
+  throwaway `bin/osf admin:create` admin, cleaned up after): header/tab
+  markup, Forms-list Edit/Disable button parity, and admins actions all
+  render as designed.
+- Scope fence honoured: admin + installer templates/CSS only; embed and
+  public API untouched; no new Composer dependencies; no behavioural
+  changes. Nothing new logged to QUESTIONS.md.

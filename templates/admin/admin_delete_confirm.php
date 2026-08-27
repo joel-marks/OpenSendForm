@@ -32,6 +32,8 @@ use function OpenSendForm\Admin\icon;
     <label for="current_password">Your current password</label>
     <input type="password" id="current_password" name="current_password"
            autocomplete="current-password" required>
-    <button type="submit" class="osf-danger"><?= icon('trash-2') ?> Permanently delete <?= h($targetEmail) ?></button>
-    <a href="/admin/admins" role="button" class="secondary">Cancel</a>
+    <div class="osf-actions">
+        <button type="submit" class="osf-danger"><?= icon('trash-2') ?> Permanently delete <?= h($targetEmail) ?></button>
+        <a href="/admin/admins" role="button" class="secondary">Cancel</a>
+    </div>
 </form>

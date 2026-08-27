@@ -67,24 +67,26 @@ use function OpenSendForm\Admin\icon;
                 </td>
                 <td data-label="Last login"><?= h((string) ($row['last_login_at'] ?? 'never')) ?></td>
                 <td data-label="Actions">
-                    <?php if ($active && $canDeactivate): ?>
-                        <form class="osf-inline-form" method="post"
-                              action="/admin/admins/<?= h((string) $id) ?>/deactivate">
-                            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                            <button type="submit" class="osf-danger">Deactivate</button>
-                        </form>
-                    <?php elseif ($active): ?>
-                        <span class="osf-badge osf-badge--muted" title="The last active admin cannot be deactivated.">last active admin</span>
-                    <?php else: ?>
-                        <form class="osf-inline-form" method="post"
-                              action="/admin/admins/<?= h((string) $id) ?>/reactivate">
-                            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                            <button type="submit" class="secondary">Reactivate</button>
-                        </form>
-                    <?php endif; ?>
-                    <?php if ($canDelete): ?>
-                        <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger"><?= icon('trash-2') ?> Delete</a>
-                    <?php endif; ?>
+                    <div class="osf-actions">
+                        <?php if ($active && $canDeactivate): ?>
+                            <form class="osf-inline-form" method="post"
+                                  action="/admin/admins/<?= h((string) $id) ?>/deactivate">
+                                <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+                                <button type="submit" class="osf-danger">Deactivate</button>
+                            </form>
+                        <?php elseif ($active): ?>
+                            <span class="osf-badge osf-badge--muted" title="The last active admin cannot be deactivated.">last active admin</span>
+                        <?php else: ?>
+                            <form class="osf-inline-form" method="post"
+                                  action="/admin/admins/<?= h((string) $id) ?>/reactivate">
+                                <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+                                <button type="submit" class="secondary">Reactivate</button>
+                            </form>
+                        <?php endif; ?>
+                        <?php if ($canDelete): ?>
+                            <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger"><?= icon('trash-2') ?> Delete</a>
+                        <?php endif; ?>
+                    </div>
                 </td>
             </tr>
         <?php endforeach; ?>

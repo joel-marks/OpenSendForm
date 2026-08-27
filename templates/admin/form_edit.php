@@ -157,8 +157,10 @@ if (($installUrl) !== '' && $formKey !== null) {
         </label>
     </fieldset>
 
-    <button type="submit"><?= $isNew ? 'Create form' : 'Save changes' ?></button>
-    <a href="/admin/forms" role="button" class="secondary">Cancel</a>
+    <div class="osf-actions">
+        <button type="submit"><?= $isNew ? 'Create form' : 'Save changes' ?></button>
+        <a href="/admin/forms" role="button" class="secondary">Cancel</a>
+    </div>
 </form>
 
 <?php if ($snippet !== ''): ?>
