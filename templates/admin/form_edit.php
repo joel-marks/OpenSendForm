@@ -71,62 +71,72 @@ if (($installUrl) !== '' && $formKey !== null) {
 <form method="post" action="<?= h($action) ?>">
     <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
 
-    <label for="name">Name
+    <div class="osf-field">
+        <label for="name">Name</label>
         <input type="text" id="name" name="name" value="<?= h($name) ?>" required>
-    </label>
+    </div>
 
-    <label for="recipient">Recipient email
+    <div class="osf-field">
+        <label for="recipient">Recipient email</label>
         <input type="email" id="recipient" name="recipient" value="<?= h($recipient) ?>" required>
         <small>Where passing submissions are relayed. Never shown to submitters.</small>
-    </label>
+    </div>
 
-    <label for="origins">Allowed origins (one per line)
+    <div class="osf-field">
+        <label for="origins">Allowed origins (one per line)</label>
         <textarea id="origins" name="origins" rows="3"
                   placeholder="https://example.com&#10;https://www.example.com" required><?= h($origins) ?></textarea>
         <small>Scheme + host (+ optional port), no path. A token/submit is only
             issued to a page whose origin is listed here.</small>
-    </label>
+    </div>
 
     <fieldset>
-        <label for="store_content">
-            <input type="checkbox" id="store_content" name="store_content" value="1"
-                   <?= $storeContent ? 'checked' : '' ?>>
-            Retain submitted content after delivery
-        </label>
-        <small>
-            Submitted fields are always held while a message is in flight so a
-            failed send can be retried. With this <strong>off</strong> (the
-            default), that content is cleared once the email is delivered — only
-            metadata is kept. Turn it <strong>on</strong> to keep the submitted
-            content in storage after a successful delivery too.
-        </small>
+        <div class="osf-field">
+            <label for="store_content">
+                <input type="checkbox" id="store_content" name="store_content" value="1"
+                       <?= $storeContent ? 'checked' : '' ?>>
+                Retain submitted content after delivery
+            </label>
+            <small>
+                Submitted fields are always held while a message is in flight so a
+                failed send can be retried. With this <strong>off</strong> (the
+                default), that content is cleared once the email is delivered — only
+                metadata is kept. Turn it <strong>on</strong> to keep the submitted
+                content in storage after a successful delivery too.
+            </small>
+        </div>
     </fieldset>
 
-    <label for="retention_days">Retention (days)
+    <div class="osf-field">
+        <label for="retention_days">Retention (days)</label>
         <input type="number" id="retention_days" name="retention_days"
                value="<?= h((string) $retentionDays) ?>" min="1" max="3650" required>
         <small>Submissions older than this are purged. 1–3650 days.</small>
-    </label>
+    </div>
 
-    <label for="is_active">
-        <input type="checkbox" id="is_active" name="is_active" value="1" <?= $isActive ? 'checked' : '' ?>>
-        Active
-    </label>
-    <small>Inactive forms reject token/submit requests.</small>
+    <div class="osf-field">
+        <label for="is_active">
+            <input type="checkbox" id="is_active" name="is_active" value="1" <?= $isActive ? 'checked' : '' ?>>
+            Active
+        </label>
+        <small>Inactive forms reject token/submit requests.</small>
+    </div>
 
     <fieldset>
-        <label for="allow_nojs">
-            <input type="checkbox" id="allow_nojs" name="allow_nojs" value="1"
-                   <?= $allowNojs ? 'checked' : '' ?>>
-            Allow submissions without JavaScript
-        </label>
-        <small>
-            Off (the default) rejects a no-JS submission with an honest
-            "requires JavaScript" page and sends nothing. On, a no-JS
-            submission is delivered but with reduced bot protection (the
-            token's min-time check is skipped for it); a form with Turnstile
-            enabled still cannot be submitted without JavaScript either way.
-        </small>
+        <div class="osf-field">
+            <label for="allow_nojs">
+                <input type="checkbox" id="allow_nojs" name="allow_nojs" value="1"
+                       <?= $allowNojs ? 'checked' : '' ?>>
+                Allow submissions without JavaScript
+            </label>
+            <small>
+                Off (the default) rejects a no-JS submission with an honest
+                "requires JavaScript" page and sends nothing. On, a no-JS
+                submission is delivered but with reduced bot protection (the
+                token's min-time check is skipped for it); a form with Turnstile
+                enabled still cannot be submitted without JavaScript either way.
+            </small>
+        </div>
     </fieldset>
 
     <fieldset>
@@ -137,12 +147,14 @@ if (($installUrl) !== '' && $formKey !== null) {
             server-side and never displayed.
         </small>
 
-        <label for="turnstile_sitekey">Site key
+        <div class="osf-field">
+            <label for="turnstile_sitekey">Site key</label>
             <input type="text" id="turnstile_sitekey" name="turnstile_sitekey"
                    value="<?= h($turnstileSitekey) ?>" autocomplete="off">
-        </label>
+        </div>
 
-        <label for="turnstile_secret">Secret key
+        <div class="osf-field">
+            <label for="turnstile_secret">Secret key</label>
             <input type="password" id="turnstile_secret" name="turnstile_secret"
                    autocomplete="off"
                    placeholder="<?= $turnstileSecretSet ? '•••••••• (leave blank to keep)' : 'not set' ?>">
@@ -154,7 +166,7 @@ if (($installUrl) !== '' && $formKey !== null) {
                     <strong>Not set.</strong>
                 <?php endif; ?>
             </small>
-        </label>
+        </div>
     </fieldset>
 
     <div class="osf-actions">
