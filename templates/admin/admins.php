@@ -59,34 +59,35 @@ use function OpenSendForm\Admin\icon;
                     <?php endif; ?>
                 </td>
                 <td data-label="Status">
-                    <?php if ($active): ?>
-                        <span class="osf-badge osf-badge--ok">active</span>
+                    <?php if ($active && $canDeactivate): ?>
+                        <form class="osf-inline-form" method="post"
+                              action="/admin/admins/<?= h((string) $id) ?>/deactivate">
+                            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+                            <button type="submit" class="osf-switch" role="switch" aria-pressed="true"
+                                    aria-label="Deactivate <?= h((string) $row['email']) ?>"></button>
+                        </form>
+                    <?php elseif ($active): ?>
+                        <button type="button" class="osf-switch" role="switch" aria-pressed="true" disabled
+                                title="The last active admin cannot be deactivated."
+                                aria-label="Deactivate <?= h((string) $row['email']) ?> (disabled: last active admin)"></button>
                     <?php else: ?>
-                        <span class="osf-badge osf-badge--warn">deactivated</span>
+                        <form class="osf-inline-form" method="post"
+                              action="/admin/admins/<?= h((string) $id) ?>/reactivate">
+                            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+                            <button type="submit" class="osf-switch" role="switch" aria-pressed="false"
+                                    aria-label="Reactivate <?= h((string) $row['email']) ?>"></button>
+                        </form>
                     <?php endif; ?>
                 </td>
                 <td data-label="Last login"><?= h((string) ($row['last_login_at'] ?? 'never')) ?></td>
                 <td data-label="Actions">
-                    <div class="osf-actions">
-                        <?php if ($active && $canDeactivate): ?>
-                            <form class="osf-inline-form" method="post"
-                                  action="/admin/admins/<?= h((string) $id) ?>/deactivate">
-                                <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <button type="submit" class="osf-danger osf-btn-sm">Deactivate</button>
-                            </form>
-                        <?php elseif ($active): ?>
-                            <span class="osf-badge osf-badge--muted" title="The last active admin cannot be deactivated.">last active admin</span>
-                        <?php else: ?>
-                            <form class="osf-inline-form" method="post"
-                                  action="/admin/admins/<?= h((string) $id) ?>/reactivate">
-                                <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <button type="submit" class="secondary osf-btn-sm">Reactivate</button>
-                            </form>
-                        <?php endif; ?>
-                        <?php if ($canDelete): ?>
+                    <?php if ($canDelete): ?>
+                        <div class="osf-actions">
                             <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger osf-btn-sm"><?= icon('trash-2') ?> Delete</a>
-                        <?php endif; ?>
-                    </div>
+                        </div>
+                    <?php else: ?>
+                        <span aria-hidden="true">&mdash;</span>
+                    <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; ?>
@@ -94,7 +95,7 @@ use function OpenSendForm\Admin\icon;
     </table>
 </div>
 
-<section>
+<section class="osf-section-top">
     <h2>Add an admin</h2>
     <?php if (($error ?? '') !== ''): ?>
         <p class="osf-flash osf-flash--error" role="alert"><strong><?= h($error) ?></strong></p>

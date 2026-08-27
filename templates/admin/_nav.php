@@ -4,9 +4,9 @@ use function OpenSendForm\Admin\icon;
 
 /** @var string $activeNav */
 $active = $activeNav ?? '';
-$tab = static function (string $key, string $href, string $label) use ($active): string {
+$tab = static function (string $key, string $href, string $label, string $iconName) use ($active): string {
     $aria = $key === $active ? ' aria-current="page"' : '';
-    return '<a class="osf-tab-link" href="' . h($href) . '"' . $aria . '>' . h($label) . '</a>';
+    return '<a class="osf-tab-link" href="' . h($href) . '"' . $aria . '>' . icon($iconName) . ' ' . h($label) . '</a>';
 };
 ?>
 <header class="osf-header">
@@ -49,10 +49,10 @@ $tab = static function (string $key, string $href, string $label) use ($active):
 </header>
 <nav class="osf-tabnav" aria-label="Primary">
     <div class="osf-tabnav-inner container">
-        <?= $tab('dashboard', '/admin', 'Dashboard') ?>
-        <?= $tab('forms', '/admin/forms', 'Forms') ?>
-        <?= $tab('submissions', '/admin/submissions', 'Submissions') ?>
-        <?= $tab('mail', '/admin/mail', 'Email') ?>
-        <?= $tab('admins', '/admin/admins', 'Admins') ?>
+        <?= $tab('dashboard', '/admin', 'Dashboard', 'layout-dashboard') ?>
+        <?= $tab('forms', '/admin/forms', 'Forms', 'file-text') ?>
+        <?= $tab('submissions', '/admin/submissions', 'Submissions', 'inbox') ?>
+        <?= $tab('mail', '/admin/mail', 'Email', 'mail') ?>
+        <?= $tab('admins', '/admin/admins', 'Admins', 'users') ?>
     </div>
 </nav>

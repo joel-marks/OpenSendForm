@@ -19,8 +19,8 @@ use function OpenSendForm\Admin\icon;
 <p role="alert">
     <strong>This cannot be undone.</strong> The account, its 2FA enrolment
     and its recovery codes are removed immediately. If you want a reversible
-    way to retire this admin instead, go back and use
-    <strong>Deactivate</strong>.
+    way to retire this admin instead, go back and use the
+    <strong>status toggle</strong> to deactivate them.
 </p>
 
 <?php if ($error !== ''): ?>
@@ -29,9 +29,11 @@ use function OpenSendForm\Admin\icon;
 
 <form method="post" action="/admin/admins/<?= h((string) $targetId) ?>/delete">
     <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-    <label for="current_password">Your current password</label>
-    <input type="password" id="current_password" name="current_password"
-           autocomplete="current-password" required>
+    <div class="osf-field">
+        <label for="current_password">Your current password</label>
+        <input type="password" id="current_password" name="current_password"
+               autocomplete="current-password" required>
+    </div>
     <div class="osf-actions">
         <button type="submit" class="osf-danger"><?= icon('trash-2') ?> Permanently delete <?= h($targetEmail) ?></button>
         <a href="/admin/admins" role="button" class="secondary">Cancel</a>

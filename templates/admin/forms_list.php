@@ -59,12 +59,12 @@ use function OpenSendForm\Admin\icon;
                     </td>
                     <td data-label="Actions">
                         <div class="osf-actions">
-                            <a href="/admin/forms/<?= h((string) $id) ?>/edit" role="button" class="secondary osf-btn-sm"><?= icon('pencil') ?> Edit</a>
+                            <a href="/admin/forms/<?= h((string) $id) ?>/edit" role="button" class="secondary osf-btn-sm osf-btn-equal"><?= icon('pencil') ?> Edit</a>
                             <form class="osf-inline-form"
                                   method="post"
                                   action="/admin/forms/<?= h((string) $id) ?>/<?= $active ? 'disable' : 'enable' ?>">
                                 <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <button type="submit" class="<?= $active ? 'osf-danger' : 'secondary' ?> osf-btn-sm"><?= $active ? 'Disable' : 'Enable' ?></button>
+                                <button type="submit" class="<?= $active ? 'osf-danger' : 'secondary' ?> osf-btn-sm osf-btn-equal"><?= $active ? 'Disable' : 'Enable' ?></button>
                             </form>
                         </div>
                     </td>
