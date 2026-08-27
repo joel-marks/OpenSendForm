@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (feature/increment-5d-design, Claude Code)
+Last updated: 2026-08-27 (fix/5d-polish, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -11,13 +11,14 @@ a client-site embed artefact with a no-JS fallback, dev-server tooling, an
 explicit migration command, guarded admin deletion and release packaging
 (v0.1.0 zip + `.htaccess` set + `bin/osf version`) are all built and merged to
 main — see the condensed sections below and HISTORY.md for full detail.
-This sprint (feature/increment-5d-design, Increment 5d) is the DESIGN-SYSTEM
-overhaul: Pico.css retired, replaced by a token contract
-(`public/assets/tokens.css`, GitHub/Primer palette) + a bespoke `admin.css`,
-a restyled top-nav header (no sidebar), a Dark/Light/Auto theme with a
-no-flash bootstrap, a vendored Lucide icon subset, and responsive
-card-collapse tables — see "Design system" below. Suite green (444 tests). CI
-runs tests + a package build/verify on every PR/push.
+Increment 5d (design-system overhaul: Pico.css retired, token contract +
+bespoke `admin.css`, top-nav header, Dark/Light/Auto theme, vendored Lucide
+icons, responsive card-collapse tables) merged to main via PR #21. This patch
+(fix/5d-polish) is architect-directed polish on top of it: exact GitHub
+palette values, a header/tab-nav split, a spacing token scale applied
+systematically, and button/badge/input control consistency — see "Design
+system" below. Suite green (444 tests). CI runs tests + a package
+build/verify on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -46,20 +47,38 @@ authenticated SMTP to the site owner.
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
-## Design system (feature/increment-5d-design) — condensed; see HISTORY
+## Design system (5d + fix/5d-polish) — condensed; see HISTORY
 - Single source of colour: `public/assets/tokens.css` defines the `--osf-*`
-  contract (surfaces/text/borders/accent/status/focus/type/shape) on `:root`
-  (dark default) and `[data-theme="light"]`. Values are @primer/primitives
-  v11.10.0 (MIT) resolved hex, each annotated with its Primer source token.
-  `data-palette` on `<html>` reserved; only `github` implemented. Contract is
-  shared verbatim with the docs site. A PHPUnit grep test (DesignSystemTest)
-  forbids any hardcoded colour in templates/ + `public/assets/*.css|js`
-  (exempt: tokens.css, vendor/qrcode.js; embed/osf.js out of scope).
+  contract (surfaces/text/borders/accent/status/focus/spacing/type/shape) on
+  `:root` (dark default) and `[data-theme="light"]`. **Palette values as of
+  fix/5d-polish are an architect-supplied reference set captured directly
+  from github.com's deployed dark/light UI ("GitHub classic as deployed"),
+  not the @primer/primitives package** — Primer's current published palette
+  has since diverged from what github.com itself renders, so the file now
+  tracks the deployed site (docblock records this explicitly; token NAMES
+  unchanged from the original 5d contract). `data-palette` on `<html>`
+  reserved; only `github` implemented. Contract is shared verbatim with the
+  docs site. A PHPUnit grep test (DesignSystemTest) forbids any hardcoded
+  colour in templates/ + `public/assets/*.css|js` (exempt: tokens.css,
+  vendor/qrcode.js; embed/osf.js out of scope).
+- Spacing scale: `--osf-space-1`..`--osf-space-6` (4/8/12/16/24/32px),
+  applied systematically across `admin.css` (table cells, labels, section/
+  card padding, button/input padding, the page `<h1>`, and a `.osf-actions`
+  flex wrapper for button groups) in place of ad-hoc rem values.
 - `admin.css` rewritten bespoke (Pico removed): element defaults + the used
-  component set, tokens only. Nav is a TOP header bar (`.osf-header`), NO
-  sidebar/tree/search/breadcrumbs; six links + external Docs link
-  (opensendform.com, book-open icon, target=_blank rel=noopener) + toggle +
-  admin name + logout; links WRAP on narrow viewports.
+  component set, tokens only. Chrome is a header bar (`.osf-header`: brand +
+  right-aligned Docs link/theme toggle/admin-name/logout) with a separate
+  GitHub-UnderlineNav-style tab bar (`.osf-tabnav`/`.osf-tab-link`) beneath it
+  for the five destinations (Dashboard/Forms/Submissions/Email/Admins) — NO
+  sidebar/tree/search/breadcrumbs. "Account" is not a nav item; it lives only
+  on the admin-name header link. Both rows wrap on narrow viewports.
+- One shared button rule (`inline-flex`, centred icon+label, fixed gap,
+  uniform space-2/space-4 padding) — fixes a prior bug where inline-form
+  buttons (Reactivate/Deactivate) rendered smaller than plain-link buttons
+  (Delete/Edit/Disable) due to a now-removed `.osf-inline-form button`
+  override. `.osf-copy` (Copy/Re-check) keeps a deliberately smaller compact
+  tier. Badges (one `.osf-badge` size, colour-only variants) and inputs
+  (one shared rule) were already consistent.
 - Theme: default dark; toggle cycles Dark/Light/Auto; persisted in
   localStorage `osf-theme`. `public/assets/theme-init.js` (external, first in
   `<head>`, blocking) sets `data-theme` (resolved) + `data-theme-mode` (choice)
@@ -70,8 +89,9 @@ authenticated SMTP to the site owner.
 - Responsive tables collapse to label+value cards under 640px via `data-label`
   cells (no horizontal scroll); submission/dashboard last-error cells are
   no-JS `<details>` expanders. Installer shares the design system (same
-  tokens/CSS/theme-init). Housekeeping: zip PHP ext added to the devcontainer
-  Dockerfile (next rebuild). SCOPE FENCE: embed osf.js + public API untouched.
+  tokens/CSS/theme-init, header restructured to the same brand/actions shape,
+  no tab bar). Housekeeping: zip PHP ext added to the devcontainer Dockerfile
+  (next rebuild). SCOPE FENCE: embed osf.js + public API untouched.
 
 ## Admin deletion (fix/admin-delete) — condensed; see HISTORY
 - Admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared
