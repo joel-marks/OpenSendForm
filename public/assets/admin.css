@@ -34,14 +34,15 @@ body {
 h1, h2, h3 {
     font-family: var(--osf-font-heading);
     line-height: 1.25;
-    margin: 1.5rem 0 0.75rem;
+    margin: var(--osf-space-5) 0 var(--osf-space-3);
 }
 
-h1 { font-size: 1.6rem; font-weight: 600; }
+/* Page title: no top margin (it opens the page), a full section-gap below. */
+h1 { font-size: 1.6rem; font-weight: 600; margin-top: 0; margin-bottom: var(--osf-space-5); }
 h2 { font-size: 1.25rem; font-weight: 600; }
 h3 { font-size: 1.05rem; font-weight: 600; }
 
-p { margin: 0 0 1rem; }
+p { margin: 0 0 var(--osf-space-4); }
 
 a {
     color: var(--osf-accent);
@@ -58,7 +59,7 @@ small {
 hr {
     border: 0;
     border-top: 1px solid var(--osf-border-muted);
-    margin: 1.5rem 0;
+    margin: var(--osf-space-5) 0;
 }
 
 code, pre, kbd, samp {
@@ -70,14 +71,14 @@ code {
     background: var(--osf-bg-inset);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius);
-    padding: 0.1rem 0.35rem;
+    padding: 0.1rem var(--osf-space-1);
 }
 
 pre {
     background: var(--osf-bg-inset);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius);
-    padding: 0.85rem 1rem;
+    padding: var(--osf-space-4);
     overflow-x: auto;   /* wide code scrolls inside its own box */
 }
 
@@ -105,12 +106,12 @@ pre code {
     width: 100%;
     max-width: 60rem;
     margin: 0 auto;
-    padding: 0 1.25rem;
+    padding: 0 var(--osf-space-5);
 }
 
 main.container {
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
+    padding-top: var(--osf-space-6);
+    padding-bottom: calc(var(--osf-space-6) * 2);
 }
 
 /* --- Inline icons ----------------------------------------------------- */
@@ -136,49 +137,42 @@ main.container {
     border: 0;
 }
 
-/* --- Top navigation (header bar, no sidebar) -------------------------- */
+/* --- Header bar (brand + account controls, no sidebar) ---------------- */
 
 .osf-header {
     background: var(--osf-bg-raised);
     border-bottom: 1px solid var(--osf-border);
 }
 
-.osf-nav {
+.osf-header-inner {
     display: flex;
     flex-wrap: wrap;            /* narrow viewports wrap to more rows */
     align-items: center;
-    gap: 0.35rem 0.75rem;
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
+    gap: var(--osf-space-2) var(--osf-space-4);
+    padding-top: var(--osf-space-3);
+    padding-bottom: var(--osf-space-3);
 }
 
 .osf-brand {
     font-weight: 700;
     color: var(--osf-text);
-    margin-right: 0.5rem;
 }
 
 .osf-brand:hover { text-decoration: none; }
 
-.osf-nav-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-}
-
-.osf-nav-actions {
+.osf-header-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--osf-space-2);
     margin-left: auto;         /* push actions to the right on wide rows */
 }
 
 .osf-nav-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.6rem;
+    gap: var(--osf-space-1);
+    padding: var(--osf-space-1) var(--osf-space-2);
     border-radius: var(--osf-radius);
     color: var(--osf-text-muted);
     font-size: 0.95rem;
@@ -190,21 +184,50 @@ main.container {
     text-decoration: none;
 }
 
-.osf-nav-link[aria-current="page"] {
-    background: var(--osf-accent-subtle);
-    color: var(--osf-accent);
-    font-weight: 600;
-}
-
 .osf-admin-name {
     color: var(--osf-text-muted);
     font-size: 0.9rem;
 }
 
-.osf-nav .osf-inline-form,
-.osf-nav form {
+.osf-header-inner .osf-inline-form,
+.osf-header-inner form {
     display: inline;
     margin: 0;
+}
+
+/* --- Tab bar (GitHub UnderlineNav style, sits beneath the header) ------ */
+
+.osf-tabnav {
+    background: var(--osf-bg);
+    border-bottom: 1px solid var(--osf-border);
+}
+
+.osf-tabnav-inner {
+    display: flex;
+    flex-wrap: wrap;           /* tabs wrap on narrow viewports */
+    gap: 0 var(--osf-space-4);
+}
+
+.osf-tab-link {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--osf-space-3) var(--osf-space-1);
+    color: var(--osf-text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+}
+
+.osf-tab-link:hover {
+    color: var(--osf-text);
+    border-bottom-color: var(--osf-border);
+    text-decoration: none;
+}
+
+.osf-tab-link[aria-current="page"] {
+    color: var(--osf-text);
+    font-weight: 600;
+    border-bottom-color: var(--osf-accent-emphasis);
 }
 
 /* Icon-only theme toggle: the visible glyph is driven by data-theme-mode
@@ -215,7 +238,7 @@ main.container {
     justify-content: center;
     width: auto;
     margin: 0;
-    padding: 0.35rem 0.5rem;
+    padding: var(--osf-space-1) var(--osf-space-2);
     background: transparent;
     color: var(--osf-text-muted);
     border: 1px solid var(--osf-border);
@@ -241,17 +264,20 @@ main.container {
 button,
 [role="button"],
 input[type="submit"] {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--osf-space-1);
     font: inherit;
     font-weight: 500;
     line-height: 1.4;
-    padding: 0.5rem 0.9rem;
+    padding: var(--osf-space-2) var(--osf-space-4);
     border-radius: var(--osf-radius);
     border: 1px solid var(--osf-accent-emphasis);
     background: var(--osf-accent-emphasis);
     color: var(--osf-text-on-accent);
     cursor: pointer;
     text-decoration: none;
+    white-space: nowrap;
 }
 
 button:hover,
@@ -283,7 +309,7 @@ input[type="submit"]:hover { text-decoration: none; filter: brightness(1.08); }
 .osf-link-button {
     display: inline-block;
     width: auto;
-    margin: 0 0 1rem;
+    margin: 0 0 var(--osf-space-4);
     padding: 0;
     background: none;
     border: none;
@@ -297,7 +323,7 @@ input[type="submit"]:hover { text-decoration: none; filter: brightness(1.08); }
 
 label {
     display: block;
-    margin: 0.75rem 0 0.35rem;
+    margin: var(--osf-space-4) 0 var(--osf-space-1);
     font-weight: 500;
 }
 
@@ -306,11 +332,12 @@ textarea,
 select {
     width: 100%;
     font: inherit;
+    line-height: 1.4;
     color: var(--osf-text);
     background: var(--osf-bg-inset);
     border: 1px solid var(--osf-border);
     border-radius: var(--osf-radius);
-    padding: 0.5rem 0.65rem;
+    padding: var(--osf-space-2) var(--osf-space-3);
 }
 
 input:focus,
@@ -340,19 +367,29 @@ label > input[type="radio"] {
 fieldset {
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius);
-    padding: 0.75rem 1rem;
-    margin: 1rem 0;
+    padding: var(--osf-space-4);
+    margin: var(--osf-space-4) 0;
 }
 
-legend { padding: 0 0.4rem; }
+legend { padding: 0 var(--osf-space-1); }
 
 .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-    gap: 1rem;
+    gap: var(--osf-space-4);
 }
 
-form { margin-bottom: 1rem; }
+form { margin-bottom: var(--osf-space-4); }
+
+/* --- Action groups (buttons/links that act together, e.g. a table row's
+   Edit + Disable, or a form's submit + Cancel) -------------------------- */
+
+.osf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--osf-space-2);
+}
 
 /* --- Cards / sections ------------------------------------------------- */
 
@@ -360,8 +397,8 @@ section {
     background: var(--osf-bg-raised);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius-lg);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.5rem;
+    padding: var(--osf-space-5);
+    margin-bottom: var(--osf-space-5);
 }
 
 section > h2:first-child,
@@ -383,7 +420,7 @@ section > h1:first-child { margin-top: 0; }
 .osf-table th,
 .osf-table td {
     text-align: left;
-    padding: 0.6rem 0.75rem;
+    padding: var(--osf-space-3) var(--osf-space-4);
     border-bottom: 1px solid var(--osf-border-muted);
     vertical-align: top;
 }
@@ -423,17 +460,17 @@ section > h1:first-child { margin-top: 0; }
     .osf-table tr {
         border: 1px solid var(--osf-border-muted);
         border-radius: var(--osf-radius);
-        margin-bottom: 0.75rem;
-        padding: 0.35rem 0.75rem;
+        margin-bottom: var(--osf-space-3);
+        padding: var(--osf-space-2) var(--osf-space-4);
         background: var(--osf-bg-raised);
     }
 
     .osf-table td {
         display: flex;
         justify-content: space-between;
-        gap: 1rem;
+        gap: var(--osf-space-4);
         border-bottom: 1px solid var(--osf-border-muted);
-        padding: 0.45rem 0;
+        padding: var(--osf-space-2) 0;
     }
 
     .osf-table tr td:last-child { border-bottom: 0; }
@@ -442,20 +479,13 @@ section > h1:first-child { margin-top: 0; }
         content: attr(data-label);
         font-weight: 600;
         color: var(--osf-text-muted);
-        margin-right: 1rem;
+        margin-right: var(--osf-space-4);
     }
 }
 
 .osf-inline-form {
     display: inline;
     margin: 0;
-}
-
-.osf-inline-form button {
-    width: auto;
-    margin: 0;
-    padding: 0.3rem 0.6rem;
-    font-size: 0.85rem;
 }
 
 .osf-truncate {
@@ -490,7 +520,7 @@ section > h1:first-child { margin-top: 0; }
 
 .osf-badge {
     display: inline-block;
-    padding: 0.12rem 0.5rem;
+    padding: 0.12rem var(--osf-space-2);
     border-radius: 2rem;
     font-size: 0.78rem;
     font-weight: 600;
@@ -509,35 +539,33 @@ section > h1:first-child { margin-top: 0; }
 .osf-copy {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--osf-space-1);
     flex-wrap: wrap;
 }
 
 .osf-copy code { font-size: 0.85rem; }
 
+/* Compact utility button variant: sits directly beside the value it acts on
+   (a copy target, a DNS record) rather than in an action group. */
 .osf-copy button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    width: auto;
-    margin: 0;
-    padding: 0.2rem 0.5rem;
+    gap: var(--osf-space-1);
+    padding: var(--osf-space-1) var(--osf-space-2);
     font-size: 0.78rem;
 }
 
 /* --- Flash messages & banners ----------------------------------------- */
 
 .osf-flash {
-    padding: 0.75rem 1rem;
+    padding: var(--osf-space-3) var(--osf-space-4);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius);
-    margin-bottom: 1rem;
+    margin-bottom: var(--osf-space-4);
 }
 
 /* Leading status icon sits inline with the message text. */
 .osf-flash > .osf-icon {
     vertical-align: -0.2em;
-    margin-right: 0.4rem;
+    margin-right: var(--osf-space-1);
 }
 
 .osf-flash--success { background: var(--osf-success-subtle); color: var(--osf-text); border-color: var(--osf-success); }
@@ -552,15 +580,15 @@ section > h1:first-child { margin-top: 0; }
 .osf-nudge {
     display: flex;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--osf-space-4);
     flex-wrap: wrap;
     align-items: center;
 }
 
 /* Separated destructive-action block (e.g. disabling two-factor auth). */
 .osf-danger-zone {
-    margin-top: 2rem;
-    padding: 1rem 1.25rem;
+    margin-top: var(--osf-space-6);
+    padding: var(--osf-space-5);
     border: 1px solid var(--osf-danger);
     border-radius: var(--osf-radius);
     background: var(--osf-danger-subtle);
@@ -568,7 +596,7 @@ section > h1:first-child { margin-top: 0; }
 
 /* Recovery codes shown one per line in a monospace block. */
 .osf-recovery-block {
-    padding: 0.75rem 1rem;
+    padding: var(--osf-space-3) var(--osf-space-4);
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-all;
@@ -587,15 +615,15 @@ section > h1:first-child { margin-top: 0; }
 
 .osf-code-boxes {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--osf-space-2);
+    margin-bottom: var(--osf-space-4);
 }
 
 .osf-code-boxes input {
     width: 3rem;
     text-align: center;
     font-size: 1.4rem;
-    padding: 0.5rem 0;
+    padding: var(--osf-space-2) 0;
     margin: 0;
 }
 
@@ -603,7 +631,7 @@ section > h1:first-child { margin-top: 0; }
 
 .osf-qr {
     display: inline-block;
-    padding: 0.75rem;
+    padding: var(--osf-space-3);
     background: var(--osf-qr-bg);   /* QR needs a light quiet zone in any theme */
     border-radius: var(--osf-radius);
     line-height: 0;
@@ -619,13 +647,13 @@ section > h1:first-child { margin-top: 0; }
 .osf-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: var(--osf-space-4);
+    margin-bottom: var(--osf-space-5);
 }
 
 .osf-stat {
     margin: 0;
-    padding: 1rem 1.25rem;
+    padding: var(--osf-space-4) var(--osf-space-5);
     background: var(--osf-bg-raised);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius-lg);

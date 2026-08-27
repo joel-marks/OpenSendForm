@@ -14,10 +14,12 @@
 </head>
 <body>
 <header class="osf-header">
-    <nav class="osf-nav container">
+    <div class="osf-header-inner container">
         <span class="osf-brand">OpenSendForm</span>
-        <span class="osf-admin-name">Setup</span>
-    </nav>
+        <div class="osf-header-actions">
+            <span class="osf-admin-name">Setup</span>
+        </div>
+    </div>
 </header>
 <main class="container">
     <?php foreach (($flashes ?? []) as $message): ?>

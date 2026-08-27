@@ -4,27 +4,16 @@ use function OpenSendForm\Admin\icon;
 
 /** @var string $activeNav */
 $active = $activeNav ?? '';
-$link = static function (string $key, string $href, string $label) use ($active): string {
+$tab = static function (string $key, string $href, string $label) use ($active): string {
     $aria = $key === $active ? ' aria-current="page"' : '';
-    return '<a class="osf-nav-link" href="' . h($href) . '"' . $aria . '>' . h($label) . '</a>';
+    return '<a class="osf-tab-link" href="' . h($href) . '"' . $aria . '>' . h($label) . '</a>';
 };
 ?>
 <header class="osf-header">
-    <nav class="osf-nav container">
+    <div class="osf-header-inner container">
         <a class="osf-brand" href="/admin">OpenSendForm</a>
 
-        <div class="osf-nav-links">
-            <?= $link('dashboard', '/admin', 'Dashboard') ?>
-            <?= $link('forms', '/admin/forms', 'Forms') ?>
-            <?= $link('submissions', '/admin/submissions', 'Submissions') ?>
-            <?= $link('mail', '/admin/mail', 'Email') ?>
-            <?= $link('admins', '/admin/admins', 'Admins') ?>
-            <?php if (($adminName ?? '') !== ''): ?>
-                <?= $link('account', '/admin/account', 'Account') ?>
-            <?php endif; ?>
-        </div>
-
-        <div class="osf-nav-actions">
+        <div class="osf-header-actions">
             <?php /* External docs; opens in a new tab, announced accessibly. */ ?>
             <a class="osf-nav-link osf-nav-docs" href="https://opensendform.com"
                target="_blank" rel="noopener">
@@ -46,5 +35,14 @@ $link = static function (string $key, string $href, string $label) use ($active)
                 <button type="submit" class="secondary"><?= icon('log-out') ?> Log out</button>
             </form>
         </div>
-    </nav>
+    </div>
 </header>
+<nav class="osf-tabnav" aria-label="Primary">
+    <div class="osf-tabnav-inner container">
+        <?= $tab('dashboard', '/admin', 'Dashboard') ?>
+        <?= $tab('forms', '/admin/forms', 'Forms') ?>
+        <?= $tab('submissions', '/admin/submissions', 'Submissions') ?>
+        <?= $tab('mail', '/admin/mail', 'Email') ?>
+        <?= $tab('admins', '/admin/admins', 'Admins') ?>
+    </div>
+</nav>
