@@ -1236,3 +1236,97 @@
 - Scope fence honoured: admin + installer templates/CSS only; embed and
   public API untouched; no new Composer dependencies; no behavioural
   changes. Nothing new logged to QUESTIONS.md.
+
+## 2026-08-27 — Patch: 5d polish v2 (fix/5d-polish, continued)
+- Same branch, continuing on top of the "5d polish" commits above (not yet
+  merged to main). Architect ruling from a second, LIVE side-by-side check
+  of github.com's computed styles plus a fresh layout review, superseding
+  several of the first pass's values/decisions.
+- **Palette re-corrected, this time live-verified.** The first pass's dark
+  values turned out to still be slightly off; this pass's dark hex/rgba
+  values were read directly off github.com's computed styles (not
+  eyeballed) — e.g. `--osf-bg-raised` #161b22→#151b23, `--osf-text`
+  #e6edf3→#f0f6fc, `--osf-text-muted` #8b949e→#9198a1, `--osf-border`
+  #30363d→#3d444d, `--osf-border-muted` now `#3d444db3` (hex+alpha, not
+  `rgba()`), `--osf-accent` #58a6ff→#4493f8, `--osf-accent-subtle` to match.
+  `--osf-success` is a **deliberate exception**: kept green (`#3fb950`)
+  even though Primer's own `--fgColor-success` alias currently resolves to
+  a blue upstream, because green is what github.com's UI actually renders.
+  Light-mode values were already correct and are unchanged. New token (both
+  modes): `--osf-tab-active: #f78166` (GitHub UnderlineNav's active-tab
+  orange, architect-supplied, not derived from the surface/accent/status
+  families). Also added `--osf-shadow-dropdown` (both modes) so the new
+  account-menu panel can have a shadow without a literal `rgba()` outside
+  tokens.css.
+- **Header restructured to two rows, one surface.** `_nav.php`/`admin.css`:
+  both the brand/actions row and the tab row now share `--osf-bg-raised`
+  (the tab row was `--osf-bg` before) and the divider between them was
+  removed — the header's own `border-bottom` is gone; the tab row's
+  existing `border-bottom` is now the ONLY hairline, sitting under the
+  second row. Both rows tightened for GitHub-like density (header row
+  padding space-3→space-2; tab-link padding space-3→space-1 vertical, so
+  the tab row reads visibly tighter than the top row). The active-tab
+  underline now references `--osf-tab-active` instead of
+  `--osf-accent-emphasis`.
+- **Account menu.** The admin-name header link is now a
+  `<details class="osf-account-menu"><summary>` dropdown trigger (native,
+  no JS, CSP-safe — GitHub's own pattern) with a vendored `chevron-down`
+  Lucide icon that rotates on open via CSS. The panel (`.osf-account-panel`,
+  right-aligned, `--osf-bg-raised`/`--osf-border`/`--osf-radius`/
+  `--osf-shadow-dropdown`) holds two `.osf-account-item` entries: "Your
+  account" (→ `/admin/account`) and the existing CSRF logout `<form>`
+  restyled as a danger-toned menu item (`.osf-account-item--danger`). The
+  standalone "Log out" button is gone — logging out is now only reachable
+  through the menu. No JS added for outside-click dismissal, per the
+  ruling (native `<details>` behaviour is accepted as-is).
+- **Spacing.** New `.osf-field` wrapper (label+input+hint, `space-4`
+  bottom margin, own top margin zeroed) applied to `account.php`'s three
+  field groups and the Admins "Add an admin" form's three fields, so a run
+  of fields in one section reads evenly regardless of what precedes it.
+  Submissions filter bar rebuilt: the boxed `<fieldset role="group">` is
+  now a plain `role="group"` div with a new `.osf-filter-bar` (flex,
+  `space-2` gap, wraps) rule; it and the "Retry all due now" form now sit
+  in a shared `.osf-toolbar` (flex, `space-4` gap, wraps, `justify-content:
+  space-between`) so the two stay visually separated instead of stacking
+  ad hoc. Two leftover ad-hoc values converted to tokens (checkbox
+  `margin-right` 0.4rem→space-1; `.osf-error-detail[open] summary`
+  margin-bottom 0.35rem→space-1).
+- **Controls.** New `.osf-btn-sm` (space-1/space-3 padding, 0.85rem)
+  applied to every action button inside a table row — Forms-list
+  Edit/Disable/Enable, Admins Deactivate/Reactivate/Delete, Submissions
+  Retry — so same-context row actions now match in height/width. The
+  pre-existing `.osf-copy` compact tier (Copy/Re-check) is left as its own
+  distinct, already-smaller tier, per CONTEXT's existing documentation of
+  that as intentional rather than an inconsistency to fold in.
+- **Banners.** `.osf-nudge` (the dismissible 2FA/mail-setup banners) no
+  longer wraps (`flex-wrap: nowrap`, message `flex: 1 1 auto`, dismiss form
+  `flex: none`) so the dismiss control can never drop to its own line. The
+  "Dismiss" text button is now an icon-only `osf-btn-sm` with the vendored
+  `x` glyph and an `aria-label="Dismiss"`.
+- Tests updated: `AdminUiTest::testTopNavRendersWithActiveLinkAndDocsLink`
+  and `AccountAdminsHttpTest::testAccountScreenRendersAndNavHasAccountLink`
+  rewritten for the details/summary account menu (no more direct
+  `<a>`-as-admin-name assertion) and assert exactly one logout form exists
+  (no standalone button). `DesignSystemTest` gained three new tests: the
+  two-row/one-surface/one-hairline header shape (parses the `.osf-header`
+  and `.osf-tabnav` CSS rule bodies directly), the active-tab
+  `--osf-tab-active` reference, and the details/summary account-menu shape
+  (menu panel, account link, logout form, danger class, exactly one logout
+  form in the partial); `chevron-down` added to the vendored-icon coverage
+  list. No-hardcoded-colours grep still passes (all new colour values live
+  only in tokens.css; the new shadow token avoided introducing a literal
+  `rgba()` in admin.css). Full suite green: 447 tests, 2909 assertions (was
+  444/2882).
+- Manually verified against the running dev server + a headless Chromium
+  (Playwright, installed for this session) screenshot pass: two-row header
+  with the single hairline, orange active-tab underline, the account menu
+  open state (Your account / Log out), the submissions toolbar/filter-bar
+  layout, admins table small-button parity, dark AND light themes, and a
+  420px-wide viewport (tabs + filter bar wrap gracefully, dismiss buttons
+  stay pinned). Screenshots not committed (scratchpad only). Login used a
+  throwaway `bin/osf admin:create` admin in the gitignored `var/` sqlite
+  DB; confirmed via `git status` that nothing under `var/` is tracked.
+- Scope fence honoured: admin + installer templates/CSS only; embed and
+  public API untouched; no new Composer dependencies; no behavioural
+  changes beyond the logout control's relocation into the account menu
+  (still the same CSRF POST). Nothing logged to QUESTIONS.md.
