@@ -5,59 +5,64 @@
  * other stylesheet (admin.css) and every template consumes the --osf-* custom
  * properties defined here; a PHPUnit grep test enforces that rule.
  *
- * The palette is the GitHub "Primer" primitives palette, vendored as resolved
- * hex/rgba so end users need no build step. Values are copied verbatim from
- * @primer/primitives v11.10.0 (MIT), functional theme files
- * dist/css/functional/themes/{dark,light}.css. Each token records the Primer
- * source token it was mapped from. This contract is shared with the docs site
- * so the app and opensendform.com render in one visual language.
+ * PALETTE SOURCE (increment 5d, patch "5d polish"): the hex/rgba values below
+ * are an architect-supplied reference set captured side-by-side against
+ * github.com's actual dark/light UI ("GitHub classic as deployed"). The
+ * previous vendoring of @primer/primitives v11.10.0 functional-theme values
+ * was superseded here — Primer's current published palette has since
+ * diverged from what github.com itself renders, so this file now tracks the
+ * deployed site rather than the primitives package. Token NAMES are
+ * unchanged; only the values were corrected.
  *
  * Theme: dark is the default (:root). A light choice sets data-theme="light"
  * on <html> (see theme-init.js). data-palette on <html> is reserved for future
  * palettes; only "github" is implemented, and it is the default here.
- *
- * Accessibility: every text/background pair used below is a Primer functional
- * pair that already clears WCAG AA in its scheme — the foreground status colours
- * are designed to sit on their -subtle background variant. We do not degrade
- * those pairings.
  */
 
 :root {
-    /* --- Palette: GitHub dark-default (Primer v11.10.0) --------------- */
+    /* --- Palette: GitHub dark, classic-as-deployed -------------------- */
 
     /* Surfaces */
-    --osf-bg:            #0d1117;   /* bgColor-default */
-    --osf-bg-raised:     #151b23;   /* bgColor-muted */
-    --osf-bg-inset:      #010409;   /* bgColor-inset */
-    --osf-bg-overlay:    #010409;   /* overlay-bgColor */
+    --osf-bg:            #0d1117;
+    --osf-bg-raised:     #161b22;
+    --osf-bg-inset:      #010409;
+    --osf-bg-overlay:    rgba(1, 4, 9, 0.8);
 
     /* Text */
-    --osf-text:          #f0f6fc;   /* fgColor-default */
-    --osf-text-muted:    #9198a1;   /* fgColor-muted */
-    --osf-text-subtle:   #656c76;   /* fgColor-disabled */
-    --osf-text-on-accent:#ffffff;   /* fgColor-onEmphasis */
+    --osf-text:          #e6edf3;
+    --osf-text-muted:    #8b949e;
+    --osf-text-subtle:   #6e7681;
+    --osf-text-on-accent:#ffffff;
 
     /* Borders */
-    --osf-border:        #3d444d;   /* borderColor-default */
-    --osf-border-muted:  #3d444db3; /* borderColor-muted */
+    --osf-border:        #30363d;
+    --osf-border-muted:  #21262d;
 
     /* Accent */
-    --osf-accent:          #4493f8; /* fgColor-accent */
-    --osf-accent-emphasis: #1f6feb; /* bgColor-accent-emphasis */
-    --osf-accent-subtle:   #388bfd1a;/* bgColor-accent-muted */
+    --osf-accent:          #58a6ff;
+    --osf-accent-emphasis: #1f6feb;
+    --osf-accent-subtle:   rgba(56, 139, 253, 0.15);
 
     /* Status foregrounds + their -subtle background variants */
-    --osf-success:         #3fb950; /* fgColor-success */
-    --osf-success-subtle:  #2ea04326;/* bgColor-success-muted */
-    --osf-warning:         #d29922; /* fgColor-attention */
-    --osf-warning-subtle:  #bb800926;/* bgColor-attention-muted */
-    --osf-danger:          #f85149; /* fgColor-danger */
-    --osf-danger-subtle:   #f851491a;/* bgColor-danger-muted */
-    --osf-info:            #4493f8; /* = accent (fgColor-accent) */
-    --osf-info-subtle:     #388bfd1a;/* = accent-subtle (bgColor-accent-muted) */
+    --osf-success:         #3fb950;
+    --osf-success-subtle:  rgba(46, 160, 67, 0.15);
+    --osf-warning:         #d29922;
+    --osf-warning-subtle:  rgba(187, 128, 9, 0.15);
+    --osf-danger:          #f85149;
+    --osf-danger-subtle:   rgba(248, 81, 73, 0.15);
+    --osf-info:            #58a6ff; /* = accent */
+    --osf-info-subtle:     rgba(56, 139, 253, 0.15); /* = accent-subtle */
 
     /* Focus */
-    --osf-focus-ring:      #1f6feb; /* borderColor-accent-emphasis */
+    --osf-focus-ring:      #1f6feb;
+
+    /* --- Spacing scale (4 / 8 / 12 / 16 / 24 / 32) --------------------- */
+    --osf-space-1: 4px;
+    --osf-space-2: 8px;
+    --osf-space-3: 12px;
+    --osf-space-4: 16px;
+    --osf-space-5: 24px;
+    --osf-space-6: 32px;
 
     /* --- Type: GitHub-style system stacks (no web fonts) ------------- */
     --osf-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
@@ -76,39 +81,39 @@
 }
 
 [data-theme="light"] {
-    /* --- Palette: GitHub light-default (Primer v11.10.0) ------------- */
+    /* --- Palette: GitHub light, classic-as-deployed -------------------- */
 
     /* Surfaces */
-    --osf-bg:            #ffffff;   /* bgColor-default */
-    --osf-bg-raised:     #f6f8fa;   /* bgColor-muted */
-    --osf-bg-inset:      #f6f8fa;   /* bgColor-inset */
-    --osf-bg-overlay:    #ffffff;   /* overlay-bgColor */
+    --osf-bg:            #ffffff;
+    --osf-bg-raised:     #f6f8fa;
+    --osf-bg-inset:      #f6f8fa;
+    --osf-bg-overlay:    rgba(27, 31, 36, 0.5);
 
     /* Text */
-    --osf-text:          #1f2328;   /* fgColor-default */
-    --osf-text-muted:    #59636e;   /* fgColor-muted */
-    --osf-text-subtle:   #818b98;   /* fgColor-disabled */
-    --osf-text-on-accent:#ffffff;   /* fgColor-onEmphasis */
+    --osf-text:          #1f2328;
+    --osf-text-muted:    #656d76;
+    --osf-text-subtle:   #6e7681;
+    --osf-text-on-accent:#ffffff;
 
     /* Borders */
-    --osf-border:        #d1d9e0;   /* borderColor-default */
-    --osf-border-muted:  #d1d9e0b3; /* borderColor-muted */
+    --osf-border:        #d0d7de;
+    --osf-border-muted:  #d8dee4;
 
     /* Accent */
-    --osf-accent:          #0969da; /* fgColor-accent */
-    --osf-accent-emphasis: #0969da; /* bgColor-accent-emphasis */
-    --osf-accent-subtle:   #ddf4ff; /* bgColor-accent-muted */
+    --osf-accent:          #0969da;
+    --osf-accent-emphasis: #0969da;
+    --osf-accent-subtle:   rgba(84, 174, 255, 0.2);
 
     /* Status foregrounds + their -subtle background variants */
-    --osf-success:         #1a7f37; /* fgColor-success */
-    --osf-success-subtle:  #dafbe1; /* bgColor-success-muted */
-    --osf-warning:         #9a6700; /* fgColor-attention */
-    --osf-warning-subtle:  #fff8c5; /* bgColor-attention-muted */
-    --osf-danger:          #d1242f; /* fgColor-danger */
-    --osf-danger-subtle:   #ffebe9; /* bgColor-danger-muted */
+    --osf-success:         #1a7f37;
+    --osf-success-subtle:  rgba(74, 194, 107, 0.2);
+    --osf-warning:         #9a6700;
+    --osf-warning-subtle:  rgba(212, 167, 44, 0.2);
+    --osf-danger:          #d1242f;
+    --osf-danger-subtle:   rgba(255, 129, 130, 0.2);
     --osf-info:            #0969da; /* = accent */
-    --osf-info-subtle:     #ddf4ff; /* = accent-subtle */
+    --osf-info-subtle:     rgba(84, 174, 255, 0.2); /* = accent-subtle */
 
     /* Focus */
-    --osf-focus-ring:      #0969da; /* borderColor-accent-emphasis */
+    --osf-focus-ring:      #0969da;
 }
