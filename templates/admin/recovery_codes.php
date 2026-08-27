@@ -17,10 +17,10 @@ use function OpenSendForm\Admin\icon;
          copy/download buttons and the "saved" gate below are enhancements. */ ?>
 <pre class="osf-recovery-block" data-recovery-codes><?php foreach ($codes as $i => $code): ?><?= $i > 0 ? "\n" : '' ?><code data-recovery-code><?= h($code) ?></code><?php endforeach; ?></pre>
 
-<p>
+<div class="osf-actions">
     <button type="button" class="secondary" data-recovery-copy hidden><?= icon('copy') ?> Copy all</button>
     <button type="button" class="secondary" data-recovery-download hidden><?= icon('download') ?> Download as .txt</button>
-</p>
+</div>
 
 <?php /* Hidden until JS reveals it; without JS the continue link just works. */ ?>
 <p data-recovery-gate hidden>
