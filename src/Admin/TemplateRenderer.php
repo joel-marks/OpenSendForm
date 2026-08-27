@@ -14,8 +14,8 @@ use RuntimeException;
  * The escaping helper h() (src/Admin/helpers.php) is loaded once and used
  * throughout the templates; nothing here emits unescaped user input.
  *
- * This increment ships functional, UNSTYLED markup — semantic HTML with no
- * CSS. The design system arrives in the next increment.
+ * The inline-SVG icon() helper (src/Admin/icons.php) is loaded alongside it
+ * so templates can render vendored Lucide glyphs.
  */
 final class TemplateRenderer
 {
@@ -25,6 +25,7 @@ final class TemplateRenderer
     {
         $this->directory = rtrim($directory, '/');
         require_once __DIR__ . '/helpers.php';
+        require_once __DIR__ . '/icons.php';
     }
 
     /**

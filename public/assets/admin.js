@@ -14,9 +14,71 @@
  *                                  the plain input, for a recovery code.
  *   [data-qr]                    — render an otpauth URI as an SVG QR (needs qrcode.js).
  *   [data-recovery-codes]        — copy-all / download-as-txt / "saved" gate.
+ *   [data-theme-toggle]          — cycle the colour theme (dark/light/auto).
  */
 (function () {
     'use strict';
+
+    // --- Colour theme toggle ------------------------------------------
+    // theme-init.js (blocking, first in <head>) applies the stored theme
+    // before paint. Here we only wire the toggle: it cycles the CHOICE
+    // dark -> light -> auto, persists it, and re-applies both attributes.
+    // The visible icon (sun/moon/monitor) is driven by data-theme-mode in CSS.
+    var THEME_KEY = 'osf-theme';
+    var THEME_ORDER = ['dark', 'light', 'auto'];
+
+    function readMode() {
+        try {
+            var value = window.localStorage.getItem(THEME_KEY);
+        } catch (e) {
+            value = null;
+        }
+        return THEME_ORDER.indexOf(value) === -1 ? 'dark' : value;
+    }
+
+    function resolveScheme(mode) {
+        if (mode === 'auto') {
+            return (window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        return mode;
+    }
+
+    function applyMode(mode) {
+        var root = document.documentElement;
+        root.setAttribute('data-theme', resolveScheme(mode));
+        root.setAttribute('data-theme-mode', mode);
+        try {
+            window.localStorage.setItem(THEME_KEY, mode);
+        } catch (e) {
+            /* Private mode / storage disabled — session-only, no persistence. */
+        }
+        labelToggles(mode);
+    }
+
+    function labelToggles(mode) {
+        var next = THEME_ORDER[(THEME_ORDER.indexOf(mode) + 1) % THEME_ORDER.length];
+        var label = 'Theme: ' + mode + '. Switch to ' + next + '.';
+        var buttons = document.querySelectorAll('[data-theme-toggle]');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].setAttribute('aria-label', label);
+            buttons[i].setAttribute('title', label);
+        }
+    }
+
+    function initThemeToggle() {
+        var buttons = document.querySelectorAll('[data-theme-toggle]');
+        if (buttons.length === 0) {
+            return;
+        }
+        labelToggles(readMode());
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].addEventListener('click', function () {
+                var mode = readMode();
+                applyMode(THEME_ORDER[(THEME_ORDER.indexOf(mode) + 1) % THEME_ORDER.length]);
+            });
+        }
+    }
 
     // --- Clipboard copy ------------------------------------------------
     function writeClipboard(text, button) {
@@ -312,6 +374,7 @@
     }
 
     function onReady() {
+        initThemeToggle();
         initCopyButtons();
         initTotpBoxes();
         initQr();
