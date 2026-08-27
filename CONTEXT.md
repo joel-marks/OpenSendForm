@@ -1,19 +1,21 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (fix/admin-delete, Claude Code)
+Last updated: 2026-08-27 (feature/increment-8-packaging, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
 validation/abuse pipeline; passing submissions are stored and relayed by
 authenticated SMTP (in-request send + operator retry cron). Full admin panel
 (auth, 2FA, forms/submissions CRUD, mail-setup wizard, browser installer),
-a client-site embed artefact with a no-JS fallback, dev-server tooling and an
-explicit migration command are all built and merged to main — see the
-condensed sections below and HISTORY.md for full sprint-by-sprint detail.
-This sprint (fix/admin-delete) is an architect ruling reversal: 5c had
-deferred admin deletion by design (deactivation-only); admins can now be
-permanently deleted, server-guarded — see "Admin deletion" below. Suite green
-(429 tests). CI runs it on every PR/push.
+a client-site embed artefact with a no-JS fallback, dev-server tooling, an
+explicit migration command and guarded admin deletion are all built and merged
+to main — see the condensed sections below and HISTORY.md for full detail.
+This sprint (feature/increment-8-packaging, Increment 8) adds the release
+packaging: a reproducible build/verify pipeline that produces
+`opensendform-v0.1.0.zip`, the production `.htaccess` set, a first-class upgrade
+path, and `bin/osf version` — see "Packaging & releases" below. **0.1.0 is the
+first packaged version.** Suite green (435 tests). CI runs tests + a package
+build/verify on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -41,24 +43,16 @@ authenticated SMTP to the site owner.
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
-## Admin deletion (fix/admin-delete) — decision + guards
-- RULING (reverses the 5c "no delete action, deferred by design" decision):
-  admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared
-  `DELETE`). Deactivation stays as the reversible alternative — both are
-  offered from the Admins screen.
-- Three server-enforced guards on both the web POST and `bin/osf
-  admin:delete` (buttons also hidden client-side where applicable, but the
-  guards are re-checked on the POST regardless): an admin can never delete
-  themselves; the last remaining ACTIVE admin can never be deleted (deleting
-  an INACTIVE admin is always allowed, whatever the active count — mirrors
-  the pre-existing deactivate-guard); the acting admin must re-enter their
-  own CURRENT password on the web confirmation step (wrong password
-  re-renders with a 401 error, same re-authentication pattern as
-  `AccountController`). The CLI path has no password gate — shell access to
-  run `bin/osf` is already a higher privilege than the admin panel itself.
-- Web flow: `GET /admin/admins/{id}/delete` — confirmation screen states
-  deletion is permanent, shows the target's email, current-password field →
-  `POST` (same path) on success redirects to `/admin/admins` with a flash.
+## Admin deletion (fix/admin-delete) — condensed; see HISTORY
+- RULING (reverses the 5c "no delete, deferred by design" decision): admins can
+  be hard-deleted (`AdminRepository::deleteAdmin`, prepared `DELETE`);
+  deactivation stays as the reversible alternative. Both on the Admins screen.
+- Three server-enforced guards on the web POST and `bin/osf admin:delete`
+  (buttons also hidden client-side, guards re-checked on POST regardless): no
+  self-delete; the last ACTIVE admin can't be deleted (an INACTIVE one always
+  can); the web confirmation re-verifies the acting admin's CURRENT password
+  (wrong → 401 re-render). CLI has no password gate — shell access is already
+  the higher privilege. Web flow: `GET/POST /admin/admins/{id}/delete`.
 
 ## No-JS submission policy (fix/nojs-policy) — condensed; see HISTORY
 - `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build, rich
@@ -80,6 +74,26 @@ authenticated SMTP to the site owner.
   `Paths::isInstalled()`, reports each newly-applied migration or "Already
   up to date.", idempotent. `MigrationRunner::pendingCount()` drives a
   non-dismissible red dashboard banner when the schema is behind.
+
+## Packaging & releases (Increment 8) — condensed; see HISTORY
+- Artefact `dist/opensendform-v{VERSION}.zip` (dist/ gitignored) extracts to one
+  `opensendform/` folder. `src/Version.php` (now 0.1.0) is the only version
+  source; the build reads it, names the zip, and it is embedded in the lock.
+- `bin/build-release.php`: `git archive` HEAD → temp, `composer install --no-dev
+  --optimize-autoloader`, prune exclusions, write INSTALL.txt + vendor/.htaccess,
+  zip. `bin/verify-release.php`: unzip + assert exclusions-absent /
+  required-present / autoloader smoke / version match (non-zero on failure).
+  Shared plumbing `bin/release_lib.php` (zip/unzip prefer ZipArchive, fall back
+  to `zip`/`unzip` CLIs — no zip ext here). Excluded: tests/, .devcontainer,
+  .github, .claude, .git, .gitignore, phpunit.xml, the 4 state files, the build
+  tooling itself. `dev-router.php` ships (inert); `tests/embed-manual.html` not.
+- `.htaccess` set: deny-all in var/, migrations/, bin/, templates/, src/, vendor/
+  (fallback layout only); `public/.htaccess` = front-controller + gzip + static
+  caching + `-Indexes`.
+- Upgrade: replace all files EXCEPT `var/` (config + SQLite db + lock survive),
+  then `bin/osf migrate` (or the dashboard banner). `bin/osf version` prints app
+  + schema version + pending count. CI `package` job (PHP 8.1 + zip ext) runs
+  build+verify and uploads the zip. Releases automation out of scope.
 
 ## Mail-setup, installer, admin auth, Turnstile, mail relay — condensed; see HISTORY
 - Installer: installed iff BOTH var/config.php and var/install.lock exist;
@@ -108,18 +122,22 @@ order itself is unchanged.
 ## What exists now
 Everything through Increment 7 (embed artefact + no-JS fallback), plus
 chore/dev-serve-and-migrate (dev router, root redirect, `bin/osf migrate`,
-dashboard staleness banner) and this sprint's admin deletion (see "Admin
-deletion" above: `AdminRepository::deleteAdmin`; `AdminsController::
-deleteConfirm/delete`; `templates/admin/admin_delete_confirm.php`; the
-Admins-screen Delete action; `bin/osf admin:delete`). Only hard Composer dep
-remains phpmailer/phpmailer ^6.
+dashboard staleness banner), admin deletion (`AdminRepository::deleteAdmin`;
+`AdminsController::deleteConfirm/delete`; `bin/osf admin:delete`) and this
+sprint's packaging (see "Packaging & releases": `bin/build-release.php`,
+`bin/verify-release.php`, `bin/release_lib.php`; the `.htaccess` set;
+`bin/osf version`; the CI package job; version 0.1.0). Production Composer deps
+remain phpmailer/phpmailer ^6, slim/slim ^4, slim/psr7, php-di/php-di.
 
 ## Known gaps / not built (by design)
-- Synthetic monitoring (8), zip packaging/release layout + production
-  `.htaccess` (front-controller rewrite + static cache headers) — later
-  increments. Migration-on-update is solved for the manual case (`bin/osf
-  migrate` + dashboard banner); still missing any AUTOMATIC trigger (e.g. a
-  post-unzip hook) — out of scope until the release/packaging work.
+- Synthetic monitoring + alerting — the remaining planned increment.
+- Migration-on-update is solved for the manual case (`bin/osf migrate` +
+  dashboard banner + `bin/osf version`); there is still no AUTOMATIC trigger
+  (e.g. a post-unzip hook), and the upgrade procedure is documented rather than
+  scripted. GitHub Releases automation, Softaculous, and code signing were
+  explicitly out of scope for Increment 8 (manual zip attach for now).
+- The dev container's PHP has no zip extension; the build/verify scripts fall
+  back to the `zip`/`unzip` CLIs (CI adds the ext). See QUESTIONS.md Inc 8 #1.
 - Password RESET by email, roles/permissions, audit log. (Account deletion
   itself is now built — see "Admin deletion" above; still no audit trail of
   who deleted whom.)
@@ -129,14 +147,14 @@ remains phpmailer/phpmailer ^6.
   osf.js is covered by `node --check` + the manual checklist.
 
 ## Open items
-None outstanding. QUESTIONS.md Increment 7 #1 (no-JS delivery vs the token
-stage) and #2 (osf.js size) were RESOLVED in fix/nojs-policy; the 6b
-branch/merge-order flag was already RESOLVED (6a/6b/7 merged to main via PRs
-#15/#16/#17). Nothing raised in chore/dev-serve-and-migrate or this sprint
-(fix/admin-delete).
+None blocking. QUESTIONS.md Increment 8 #1 records a DEVIATION (no zip PHP
+extension in the container → ZipArchive-or-CLI fallback), resolved without
+architect input; noted only so the base-image gap is on record. Earlier
+questions (Inc 7 #1/#2, the 6b merge-order flag) were all RESOLVED.
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin
 auth. 5b. Design system + CRUD. 5c. Account mgmt + 2FA lifecycle. 6a. Installer
-engine. 6b. Email-setup wizard + installer polish. 7. Embed snippet + JS. — ALL
-DONE. 8. Synthetic monitoring + alerting.
+engine. 6b. Email-setup wizard + installer polish. 7. Embed snippet + JS.
+8. Packaging: release zip + versioning + upgrade path + install docs. — ALL
+DONE. 9. Synthetic monitoring + alerting (renumbered from 8).
