@@ -1,37 +1,50 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 
 /** @var string $activeNav */
 $active = $activeNav ?? '';
 $link = static function (string $key, string $href, string $label) use ($active): string {
     $aria = $key === $active ? ' aria-current="page"' : '';
-    return '<a href="' . h($href) . '"' . $aria . '>' . h($label) . '</a>';
+    return '<a class="osf-nav-link" href="' . h($href) . '"' . $aria . '>' . h($label) . '</a>';
 };
 ?>
-<nav class="container osf-nav">
-    <ul>
-        <li class="osf-brand"><a href="/admin">OpenSendForm</a></li>
-    </ul>
-    <ul>
-        <li><?= $link('dashboard', '/admin', 'Dashboard') ?></li>
-        <li><?= $link('forms', '/admin/forms', 'Forms') ?></li>
-        <li><?= $link('submissions', '/admin/submissions', 'Submissions') ?></li>
-        <li><?= $link('mail', '/admin/mail', 'Email') ?></li>
-        <li><?= $link('admins', '/admin/admins', 'Admins') ?></li>
-        <li>
+<header class="osf-header">
+    <nav class="osf-nav container">
+        <a class="osf-brand" href="/admin">OpenSendForm</a>
+
+        <div class="osf-nav-links">
+            <?= $link('dashboard', '/admin', 'Dashboard') ?>
+            <?= $link('forms', '/admin/forms', 'Forms') ?>
+            <?= $link('submissions', '/admin/submissions', 'Submissions') ?>
+            <?= $link('mail', '/admin/mail', 'Email') ?>
+            <?= $link('admins', '/admin/admins', 'Admins') ?>
+            <?php if (($adminName ?? '') !== ''): ?>
+                <?= $link('account', '/admin/account', 'Account') ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="osf-nav-actions">
+            <?php /* External docs; opens in a new tab, announced accessibly. */ ?>
+            <a class="osf-nav-link osf-nav-docs" href="https://opensendform.com"
+               target="_blank" rel="noopener">
+                <?= icon('book-open') ?> Docs
+                <span class="osf-visually-hidden"> (opens in a new tab)</span>
+            </a>
+
             <button type="button" class="osf-theme-toggle" data-theme-toggle
-                    aria-label="Toggle colour theme" title="Toggle colour theme">☾</button>
-        </li>
-        <?php if (($adminName ?? '') !== ''): ?>
-            <li class="osf-admin-name">
-                <?= $link('account', '/admin/account', $adminName) ?>
-            </li>
-        <?php endif; ?>
-        <li>
-            <form method="post" action="/admin/logout">
+                    aria-label="Toggle colour theme" title="Toggle colour theme">
+                <?= icon('sun', 'osf-icon-sun') ?><?= icon('moon', 'osf-icon-moon') ?><?= icon('monitor', 'osf-icon-monitor') ?>
+            </button>
+
+            <?php if (($adminName ?? '') !== ''): ?>
+                <a class="osf-admin-name osf-nav-link" href="/admin/account"><?= h($adminName) ?></a>
+            <?php endif; ?>
+
+            <form method="post" action="/admin/logout" class="osf-inline-form">
                 <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
-                <button type="submit" class="secondary">Log out</button>
+                <button type="submit" class="secondary"><?= icon('log-out') ?> Log out</button>
             </form>
-        </li>
-    </ul>
-</nav>
+        </div>
+    </nav>
+</header>

@@ -1,15 +1,16 @@
 <?php use function OpenSendForm\Admin\h; ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-palette="github">
 <head>
+    <?php /* First in <head>, blocking: applies the stored theme to <html>
+             before first paint so there is no flash of the wrong theme. */ ?>
+    <script src="/assets/theme-init.js"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title><?= h($title ?? 'OpenSendForm admin') ?></title>
-    <link rel="stylesheet" href="/assets/vendor/pico.min.css">
+    <link rel="stylesheet" href="/assets/tokens.css">
     <link rel="stylesheet" href="/assets/admin.css">
-    <?php /* Blocking so the stored theme is applied before first paint. */ ?>
-    <script src="/assets/theme.js"></script>
 </head>
 <body>
 <?php if (($showNav ?? false) === true): ?>

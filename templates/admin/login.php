@@ -1,8 +1,11 @@
-<?php use function OpenSendForm\Admin\h; ?>
+<?php
+use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
+?>
 <h1>Admin sign in</h1>
 
 <?php if (($error ?? '') !== ''): ?>
-    <p role="alert"><strong><?= h($error) ?></strong></p>
+    <p class="osf-flash osf-flash--error" role="alert"><?= icon('alert-triangle') ?> <span><strong><?= h($error) ?></strong></span></p>
 <?php endif; ?>
 
 <form method="post" action="/admin/login">

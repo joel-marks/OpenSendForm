@@ -1,5 +1,6 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 
 /**
  * @var array<int, array<string, mixed>> $admins
@@ -21,7 +22,7 @@ use function OpenSendForm\Admin\h;
 </p>
 
 <div class="osf-table-wrap">
-    <table>
+    <table class="osf-table">
         <thead>
             <tr>
                 <th scope="col">Email</th>
@@ -44,33 +45,33 @@ use function OpenSendForm\Admin\h;
             // when they are not the last active admin. Never yourself, either way.
             $canDelete = !$isSelf && ($active ? $activeCount > 1 : true);
             ?>
-            <tr>
-                <td>
+            <tr<?= $active ? '' : ' class="osf-row-muted"' ?>>
+                <td data-label="Email">
                     <?= h((string) $row['email']) ?>
                     <?php if ($isSelf): ?><span class="osf-badge osf-badge--info">you</span><?php endif; ?>
                 </td>
-                <td><?= h((string) $row['display_name']) ?></td>
-                <td>
+                <td data-label="Name"><?= h((string) $row['display_name']) ?></td>
+                <td data-label="2FA">
                     <?php if ((int) $row['totp_enabled'] === 1): ?>
                         <span class="osf-badge osf-badge--ok">on</span>
                     <?php else: ?>
                         <span class="osf-badge osf-badge--muted">off</span>
                     <?php endif; ?>
                 </td>
-                <td>
+                <td data-label="Status">
                     <?php if ($active): ?>
                         <span class="osf-badge osf-badge--ok">active</span>
                     <?php else: ?>
-                        <span class="osf-badge osf-badge--muted">deactivated</span>
+                        <span class="osf-badge osf-badge--warn">deactivated</span>
                     <?php endif; ?>
                 </td>
-                <td><?= h((string) ($row['last_login_at'] ?? 'never')) ?></td>
-                <td>
+                <td data-label="Last login"><?= h((string) ($row['last_login_at'] ?? 'never')) ?></td>
+                <td data-label="Actions">
                     <?php if ($active && $canDeactivate): ?>
                         <form class="osf-inline-form" method="post"
                               action="/admin/admins/<?= h((string) $id) ?>/deactivate">
                             <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                            <button type="submit" class="secondary">Deactivate</button>
+                            <button type="submit" class="osf-danger">Deactivate</button>
                         </form>
                     <?php elseif ($active): ?>
                         <span class="osf-badge osf-badge--muted" title="The last active admin cannot be deactivated.">last active admin</span>
@@ -82,7 +83,7 @@ use function OpenSendForm\Admin\h;
                         </form>
                     <?php endif; ?>
                     <?php if ($canDelete): ?>
-                        <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="secondary outline">Delete</a>
+                        <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger"><?= icon('trash-2') ?> Delete</a>
                     <?php endif; ?>
                 </td>
             </tr>

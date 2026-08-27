@@ -65,7 +65,7 @@ $return = [
     <p>No submissions match this filter.</p>
 <?php else: ?>
     <div class="osf-table-wrap">
-        <table>
+        <table class="osf-table">
             <thead>
                 <tr>
                     <th scope="col">ID</th>
@@ -82,17 +82,27 @@ $return = [
                 <?php
                 $rstatus = (string) $row['status'];
                 $retryable = $rstatus === 'failed' || $rstatus === 'dead';
+                $error = (string) ($row['last_error'] ?? '');
                 ?>
                 <tr>
-                    <td><?= h((string) $row['id']) ?></td>
-                    <td><?= h((string) ($row['form_name'] ?? ('#' . $row['form_id']))) ?></td>
-                    <td><?= h((string) $row['created_at']) ?></td>
-                    <td><span class="osf-badge <?= h(statusBadgeClass($rstatus)) ?>"><?= h($rstatus) ?></span></td>
-                    <td><?= h((string) $row['attempts']) ?></td>
-                    <td class="osf-truncate" title="<?= h((string) ($row['last_error'] ?? '')) ?>">
-                        <?= h(truncate($row['last_error'] ?? '', 60)) ?>
+                    <td data-label="ID"><?= h((string) $row['id']) ?></td>
+                    <td data-label="Form"><?= h((string) ($row['form_name'] ?? ('#' . $row['form_id']))) ?></td>
+                    <td data-label="Created"><?= h((string) $row['created_at']) ?></td>
+                    <td data-label="Status"><span class="osf-badge <?= h(statusBadgeClass($rstatus)) ?>"><?= h($rstatus) ?></span></td>
+                    <td data-label="Attempts"><?= h((string) $row['attempts']) ?></td>
+                    <td data-label="Last error">
+                        <?php if ($error === ''): ?>
+                            <span aria-hidden="true">—</span>
+                        <?php elseif (mb_strlen($error) <= 60): ?>
+                            <?= h($error) ?>
+                        <?php else: ?>
+                            <details class="osf-error-detail">
+                                <summary><?= h(truncate($error, 60)) ?></summary>
+                                <pre><?= h($error) ?></pre>
+                            </details>
+                        <?php endif; ?>
                     </td>
-                    <td>
+                    <td data-label="Actions">
                         <?php if ($retryable): ?>
                             <form class="osf-inline-form" method="post"
                                   action="/admin/submissions/<?= h((string) $row['id']) ?>/retry">
