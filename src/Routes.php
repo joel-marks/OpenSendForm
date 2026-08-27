@@ -36,6 +36,13 @@ final class Routes
 
         $app->get('/health', [self::class, 'health']);
 
+        // GET / has no page of its own; bounce straight to the sign-in screen.
+        // (When the instance isn't installed yet, InstallStateMiddleware
+        // redirects to /install before routing ever reaches this handler.)
+        $app->get('/', function (ServerRequestInterface $req, ResponseInterface $res): ResponseInterface {
+            return $res->withHeader('Location', '/admin/login')->withStatus(302);
+        });
+
         // The embed client artefact, served with a long immutable cache (the
         // snippet busts it with a ?v= query). In production Apache serves the
         // static file directly; this route is the front-controller fallback and
