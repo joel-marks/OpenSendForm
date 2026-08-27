@@ -5,14 +5,17 @@
  * other stylesheet (admin.css) and every template consumes the --osf-* custom
  * properties defined here; a PHPUnit grep test enforces that rule.
  *
- * PALETTE SOURCE (increment 5d, patch "5d polish"): the hex/rgba values below
- * are an architect-supplied reference set captured side-by-side against
- * github.com's actual dark/light UI ("GitHub classic as deployed"). The
- * previous vendoring of @primer/primitives v11.10.0 functional-theme values
- * was superseded here — Primer's current published palette has since
- * diverged from what github.com itself renders, so this file now tracks the
- * deployed site rather than the primitives package. Token NAMES are
- * unchanged; only the values were corrected.
+ * PALETTE SOURCE (patch "fix/5d-polish", 2026-08-27): the dark-mode hex/rgba
+ * values below are LIVE-VERIFIED — captured directly from github.com's
+ * deployed computed styles (not the @primer/primitives package, whose
+ * currently published values have drifted from what the site itself
+ * renders). One deliberate exception: --osf-success stays GREEN. Primer's
+ * own --fgColor-success alias currently resolves to a blue in the upstream
+ * package, but green is what github.com's UI actually renders for success
+ * states, so the live-verified green value was kept over the (apparently
+ * mistaken) upstream alias. Light-mode values are unchanged from the prior
+ * "5d polish" pass — they already matched github.com's light UI. Token
+ * NAMES are unchanged throughout; only values were corrected.
  *
  * Theme: dark is the default (:root). A light choice sets data-theme="light"
  * on <html> (see theme-init.js). data-palette on <html> is reserved for future
@@ -20,41 +23,50 @@
  */
 
 :root {
-    /* --- Palette: GitHub dark, classic-as-deployed -------------------- */
+    /* --- Palette: GitHub dark, live-verified from github.com ---------- */
 
     /* Surfaces */
     --osf-bg:            #0d1117;
-    --osf-bg-raised:     #161b22;
+    --osf-bg-raised:     #151b23;
     --osf-bg-inset:      #010409;
     --osf-bg-overlay:    rgba(1, 4, 9, 0.8);
 
     /* Text */
-    --osf-text:          #e6edf3;
-    --osf-text-muted:    #8b949e;
+    --osf-text:          #f0f6fc;
+    --osf-text-muted:    #9198a1;
     --osf-text-subtle:   #6e7681;
     --osf-text-on-accent:#ffffff;
 
     /* Borders */
-    --osf-border:        #30363d;
-    --osf-border-muted:  #21262d;
+    --osf-border:        #3d444d;
+    --osf-border-muted:  #3d444db3;
 
     /* Accent */
-    --osf-accent:          #58a6ff;
+    --osf-accent:          #4493f8;
     --osf-accent-emphasis: #1f6feb;
-    --osf-accent-subtle:   rgba(56, 139, 253, 0.15);
+    --osf-accent-subtle:   rgba(68, 147, 248, 0.15);
 
-    /* Status foregrounds + their -subtle background variants */
+    /* Status foregrounds + their -subtle background variants. --osf-success
+       is a deliberate exception to strict live-verification — see the file
+       docblock above. */
     --osf-success:         #3fb950;
     --osf-success-subtle:  rgba(46, 160, 67, 0.15);
     --osf-warning:         #d29922;
     --osf-warning-subtle:  rgba(187, 128, 9, 0.15);
     --osf-danger:          #f85149;
     --osf-danger-subtle:   rgba(248, 81, 73, 0.15);
-    --osf-info:            #58a6ff; /* = accent */
-    --osf-info-subtle:     rgba(56, 139, 253, 0.15); /* = accent-subtle */
+    --osf-info:            #4493f8; /* = accent */
+    --osf-info-subtle:     rgba(68, 147, 248, 0.15); /* = accent-subtle */
 
     /* Focus */
     --osf-focus-ring:      #1f6feb;
+
+    /* GitHub UnderlineNav active-tab orange (architect-supplied; not part of
+       the surface/text/border/accent/status families above). */
+    --osf-tab-active:      #f78166;
+
+    /* Dropdown/menu elevation (the account menu panel). */
+    --osf-shadow-dropdown: 0 8px 24px rgba(1, 4, 9, 0.4);
 
     /* --- Spacing scale (4 / 8 / 12 / 16 / 24 / 32) --------------------- */
     --osf-space-1: 4px;
@@ -116,4 +128,11 @@
 
     /* Focus */
     --osf-focus-ring:      #0969da;
+
+    /* GitHub UnderlineNav active-tab orange (architect-supplied; same value
+       in both modes). */
+    --osf-tab-active:      #f78166;
+
+    /* Dropdown/menu elevation (the account menu panel). */
+    --osf-shadow-dropdown: 0 8px 24px rgba(31, 35, 40, 0.15);
 }

@@ -13,12 +13,17 @@ explicit migration command, guarded admin deletion and release packaging
 main — see the condensed sections below and HISTORY.md for full detail.
 Increment 5d (design-system overhaul: Pico.css retired, token contract +
 bespoke `admin.css`, top-nav header, Dark/Light/Auto theme, vendored Lucide
-icons, responsive card-collapse tables) merged to main via PR #21. This patch
-(fix/5d-polish) is architect-directed polish on top of it: exact GitHub
-palette values, a header/tab-nav split, a spacing token scale applied
-systematically, and button/badge/input control consistency — see "Design
-system" below. Suite green (444 tests). CI runs tests + a package
-build/verify on every PR/push.
+icons, responsive card-collapse tables) merged to main via PR #21.
+fix/5d-polish (not yet merged) is two rounds of architect-directed polish on
+top of it: a first pass (exact GitHub palette, header/tab-nav split, a
+spacing token scale, button/badge/input consistency), then a second,
+LIVE-VERIFIED pass ("5d polish v2") that re-corrected the dark palette
+against github.com's actual computed styles, reshaped the header into two
+same-surface rows with one hairline, added an orange active-tab token, swapped
+the standalone logout button for a `<details>` account dropdown, and further
+tightened spacing/control/banner consistency — see "Design system" below.
+Suite green (447 tests). CI runs tests + a package build/verify on every
+PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -47,38 +52,66 @@ authenticated SMTP to the site owner.
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
-## Design system (5d + fix/5d-polish) — condensed; see HISTORY
+## Design system (5d + fix/5d-polish v1 + v2) — condensed; see HISTORY
 - Single source of colour: `public/assets/tokens.css` defines the `--osf-*`
-  contract (surfaces/text/borders/accent/status/focus/spacing/type/shape) on
-  `:root` (dark default) and `[data-theme="light"]`. **Palette values as of
-  fix/5d-polish are an architect-supplied reference set captured directly
-  from github.com's deployed dark/light UI ("GitHub classic as deployed"),
-  not the @primer/primitives package** — Primer's current published palette
-  has since diverged from what github.com itself renders, so the file now
-  tracks the deployed site (docblock records this explicitly; token NAMES
-  unchanged from the original 5d contract). `data-palette` on `<html>`
-  reserved; only `github` implemented. Contract is shared verbatim with the
-  docs site. A PHPUnit grep test (DesignSystemTest) forbids any hardcoded
-  colour in templates/ + `public/assets/*.css|js` (exempt: tokens.css,
-  vendor/qrcode.js; embed/osf.js out of scope).
+  contract (surfaces/text/borders/accent/status/focus/tab-active/shadow/
+  spacing/type/shape) on `:root` (dark default) and `[data-theme="light"]`.
+  **Dark palette values are LIVE-VERIFIED** (as of fix/5d-polish v2,
+  2026-08-27) — captured directly from github.com's deployed computed
+  styles, not the @primer/primitives package and not eyeballed like the
+  first "5d polish" pass (whose values this superseded). **Deliberate
+  exception: `--osf-success` stays GREEN** — Primer's own `--fgColor-success`
+  alias currently resolves to a blue upstream, but green is what github.com's
+  UI actually renders, so the live-verified green was kept over the
+  (apparently mistaken) upstream alias; the docblock records this. Light
+  palette was already correct from the first pass and is unchanged. Token
+  NAMES unchanged throughout. `--osf-tab-active` (`#f78166`, both modes) is
+  architect-supplied — GitHub UnderlineNav's active-tab orange, not derived
+  from the surface/accent/status families. `data-palette` on `<html>`
+  reserved; only `github` implemented. A PHPUnit grep test (DesignSystemTest)
+  forbids any hardcoded colour in templates/ + `public/assets/*.css|js`
+  (exempt: tokens.css, vendor/qrcode.js; embed/osf.js out of scope) — this is
+  why the account-menu dropdown shadow is a token (`--osf-shadow-dropdown`)
+  rather than an inline `rgba()`.
 - Spacing scale: `--osf-space-1`..`--osf-space-6` (4/8/12/16/24/32px),
-  applied systematically across `admin.css` (table cells, labels, section/
-  card padding, button/input padding, the page `<h1>`, and a `.osf-actions`
-  flex wrapper for button groups) in place of ad-hoc rem values.
+  applied systematically across `admin.css` and templates in place of ad-hoc
+  values. `.osf-field` (label+input+hint wrapper, space-4 gap) keeps runs of
+  fields evenly spaced on the Account page and the Admins "Add an admin"
+  form. `.osf-toolbar` + `.osf-filter-bar` give the Submissions filter row a
+  compact inline layout (status/form/Filter, space-2 gap) with "Retry all
+  due now" clearly separated alongside it, both wrapping gracefully.
 - `admin.css` rewritten bespoke (Pico removed): element defaults + the used
-  component set, tokens only. Chrome is a header bar (`.osf-header`: brand +
-  right-aligned Docs link/theme toggle/admin-name/logout) with a separate
-  GitHub-UnderlineNav-style tab bar (`.osf-tabnav`/`.osf-tab-link`) beneath it
-  for the five destinations (Dashboard/Forms/Submissions/Email/Admins) — NO
-  sidebar/tree/search/breadcrumbs. "Account" is not a nav item; it lives only
-  on the admin-name header link. Both rows wrap on narrow viewports.
+  component set, tokens only. Chrome is a COMPACT, TWO-ROW header, both rows
+  on `--osf-bg-raised` with NO divider between them — a single hairline
+  border sits under the second row only. Row 1 (`.osf-header`): brand left;
+  right-aligned Docs link, theme toggle, account dropdown. Row 2
+  (`.osf-tabnav`/`.osf-tab-link`): GitHub-UnderlineNav-style tabs for the
+  five destinations (Dashboard/Forms/Submissions/Email/Admins), tighter
+  padding than row 1 for GitHub-like density; active tab = `--osf-text` on a
+  2px `--osf-tab-active` underline, inactive = `--osf-text-muted`, hover
+  underline = `--osf-border`. NO sidebar/tree/search/breadcrumbs. "Account"
+  is not a nav item — it's a menu entry (see below). Both rows wrap on
+  narrow viewports.
+- **Account menu**: the admin name is a `<details class="osf-account-menu">
+  <summary>` dropdown trigger (native, no JS, CSP-safe — GitHub's own
+  pattern) with a vendored `chevron-down` Lucide icon (rotates on `[open]`
+  via CSS). The panel (`--osf-bg-raised`/`--osf-border`/`--osf-radius`/
+  `--osf-shadow-dropdown`, right-aligned) holds two `.osf-account-item`
+  entries: "Your account" (→ `/admin/account`) and the existing CSRF logout
+  `<form>` restyled as a danger-toned item (`.osf-account-item--danger`).
+  There is no standalone logout button anywhere else. No JS added for
+  outside-click dismissal (native `<details>` behaviour accepted as-is).
 - One shared button rule (`inline-flex`, centred icon+label, fixed gap,
-  uniform space-2/space-4 padding) — fixes a prior bug where inline-form
-  buttons (Reactivate/Deactivate) rendered smaller than plain-link buttons
-  (Delete/Edit/Disable) due to a now-removed `.osf-inline-form button`
-  override. `.osf-copy` (Copy/Re-check) keeps a deliberately smaller compact
-  tier. Badges (one `.osf-badge` size, colour-only variants) and inputs
-  (one shared rule) were already consistent.
+  uniform space-2/space-4 padding); a `.osf-btn-sm` small variant
+  (space-1/space-3, 0.85rem) is applied to every action button inside a
+  table row (Edit, Disable/Enable, Delete, Reactivate, Deactivate, Retry) so
+  same-context row actions match in height/width. `.osf-copy` (Copy/
+  Re-check) keeps its own, already-smaller compact tier — a deliberately
+  distinct utility size, not folded into `.osf-btn-sm`. Badges (one
+  `.osf-badge` size) and inputs (one shared rule) remain consistent.
+  Dismissible banners (`.osf-nudge`) never wrap: the message grows
+  (`flex: 1 1 auto`) and the dismiss control (`flex: none`, icon-only
+  `x` glyph, `.osf-btn-sm`) stays pinned on the same row.
 - Theme: default dark; toggle cycles Dark/Light/Auto; persisted in
   localStorage `osf-theme`. `public/assets/theme-init.js` (external, first in
   `<head>`, blocking) sets `data-theme` (resolved) + `data-theme-mode` (choice)
@@ -90,8 +123,10 @@ authenticated SMTP to the site owner.
   cells (no horizontal scroll); submission/dashboard last-error cells are
   no-JS `<details>` expanders. Installer shares the design system (same
   tokens/CSS/theme-init, header restructured to the same brand/actions shape,
-  no tab bar). Housekeeping: zip PHP ext added to the devcontainer Dockerfile
-  (next rebuild). SCOPE FENCE: embed osf.js + public API untouched.
+  no tab bar, no account menu). Housekeeping: zip PHP ext added to the
+  devcontainer Dockerfile (next rebuild). SCOPE FENCE: embed osf.js + public
+  API untouched; the logout control's only behavioural change is its new
+  location (inside the account menu), same CSRF POST.
 
 ## Admin deletion (fix/admin-delete) — condensed; see HISTORY
 - Admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared

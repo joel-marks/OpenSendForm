@@ -634,17 +634,39 @@ final class AdminUiTest extends TestCase
         self::assertStringNotContainsString('<aside', $body);
 
         // The header carries only brand + right-aligned account controls —
-        // the primary destinations live in the tab bar beneath it.
+        // the primary destinations live in the tab bar beneath it (the
+        // second of the two header rows).
         self::assertStringContainsString('class="osf-tabnav"', $body);
         self::assertMatchesRegularExpression(
             '/<a class="osf-tab-link" href="\/admin" aria-current="page">Dashboard<\/a>/',
             $body
         );
-        // Account is a header link (admin name), not a tab.
+        // Account is a header control (a dropdown trigger), not a tab.
         self::assertStringNotContainsString('>Account<', $body);
+
+        // The admin name is a <details>/<summary> dropdown trigger (no JS
+        // required to open it, CSP-safe) carrying a chevron-down caret.
+        self::assertStringContainsString('<details class="osf-account-menu">', $body);
         self::assertMatchesRegularExpression(
-            '/<a class="osf-admin-name osf-nav-link" href="\/admin\/account">The Boss<\/a>/',
+            '/<summary class="osf-nav-link osf-admin-name">\s*The Boss/',
             $body
+        );
+        self::assertStringContainsString('osf-account-caret', $body);
+
+        // The menu panel holds "Your account" and the logout form (styled as
+        // a menu item); there is no standalone logout button outside it.
+        self::assertMatchesRegularExpression(
+            '/<a class="osf-account-item" href="\/admin\/account">Your account<\/a>/',
+            $body
+        );
+        self::assertMatchesRegularExpression(
+            '#<form method="post" action="/admin/logout" class="osf-inline-form">.*?osf-account-item--danger.*?Log out.*?</form>#s',
+            $body
+        );
+        self::assertSame(
+            1,
+            substr_count($body, 'action="/admin/logout"'),
+            'Exactly one logout form — no standalone logout button remains'
         );
 
         // External Docs link: new tab + noopener, and a rendered inline icon.

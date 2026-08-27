@@ -38,7 +38,9 @@ use function OpenSendForm\Admin\icon;
         </span>
         <form method="post" action="/admin/nudge/dismiss" class="osf-inline-form">
             <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
-            <button type="submit" class="secondary outline">Dismiss</button>
+            <button type="submit" class="secondary outline osf-btn-sm" aria-label="Dismiss">
+                <?= icon('x') ?>
+            </button>
         </form>
     </div>
 <?php endif; ?>
@@ -56,7 +58,9 @@ use function OpenSendForm\Admin\icon;
         </span>
         <form method="post" action="/admin/nudge/mail/dismiss" class="osf-inline-form">
             <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
-            <button type="submit" class="secondary outline">Dismiss</button>
+            <button type="submit" class="secondary outline osf-btn-sm" aria-label="Dismiss">
+                <?= icon('x') ?>
+            </button>
         </form>
     </div>
 <?php endif; ?>
