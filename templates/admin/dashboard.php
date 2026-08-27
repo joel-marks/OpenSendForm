@@ -14,6 +14,15 @@ use function OpenSendForm\Admin\statusBadgeClass;
 ?>
 <h1>Dashboard</h1>
 
+<?php if (($pendingMigrations ?? 0) > 0): ?>
+    <?php /* Not dismissible: this stays until the admin actually runs the
+             migration, unlike the 2FA/mail nudges below. */ ?>
+    <div class="osf-flash osf-flash--error" role="alert">
+        <strong>Database update required</strong> &mdash; run <code>bin/osf migrate</code>
+        (<?= h((string) $pendingMigrations) ?> pending migration<?= $pendingMigrations === 1 ? '' : 's' ?>).
+    </div>
+<?php endif; ?>
+
 <?php if (($showNudge ?? false) === true): ?>
     <?php /* Dismissible-per-session nudge urging 2FA enrolment. Dismissing
              sets a session flag (see AdminController::dismissNudge); it

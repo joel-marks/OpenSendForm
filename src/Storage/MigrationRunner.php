@@ -64,6 +64,15 @@ final class MigrationRunner
     }
 
     /**
+     * How many migrations are pending. Cheap: a directory listing plus one
+     * SELECT, no schema changes — safe to call on every request.
+     */
+    public function pendingCount(): int
+    {
+        return count($this->pendingMigrations());
+    }
+
+    /**
      * Versions already recorded as applied.
      *
      * @return array<int, int>
