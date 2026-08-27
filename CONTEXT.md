@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (feature/increment-8-packaging, Claude Code)
+Last updated: 2026-08-27 (feature/increment-5d-design, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -8,14 +8,16 @@ validation/abuse pipeline; passing submissions are stored and relayed by
 authenticated SMTP (in-request send + operator retry cron). Full admin panel
 (auth, 2FA, forms/submissions CRUD, mail-setup wizard, browser installer),
 a client-site embed artefact with a no-JS fallback, dev-server tooling, an
-explicit migration command and guarded admin deletion are all built and merged
-to main — see the condensed sections below and HISTORY.md for full detail.
-This sprint (feature/increment-8-packaging, Increment 8) adds the release
-packaging: a reproducible build/verify pipeline that produces
-`opensendform-v0.1.0.zip`, the production `.htaccess` set, a first-class upgrade
-path, and `bin/osf version` — see "Packaging & releases" below. **0.1.0 is the
-first packaged version.** Suite green (435 tests). CI runs tests + a package
-build/verify on every PR/push.
+explicit migration command, guarded admin deletion and release packaging
+(v0.1.0 zip + `.htaccess` set + `bin/osf version`) are all built and merged to
+main — see the condensed sections below and HISTORY.md for full detail.
+This sprint (feature/increment-5d-design, Increment 5d) is the DESIGN-SYSTEM
+overhaul: Pico.css retired, replaced by a token contract
+(`public/assets/tokens.css`, GitHub/Primer palette) + a bespoke `admin.css`,
+a restyled top-nav header (no sidebar), a Dark/Light/Auto theme with a
+no-flash bootstrap, a vendored Lucide icon subset, and responsive
+card-collapse tables — see "Design system" below. Suite green (444 tests). CI
+runs tests + a package build/verify on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -25,8 +27,9 @@ authenticated SMTP to the site owner.
 
 ## Decisions locked
 - Name: OpenSendForm. Stack: PHP 8.1+ / Slim 4 / Composer / PHPMailer /
-  SQLite default (MySQL optional via PDO). Server-rendered admin UI on
-  Pico.css; no JS framework, no build step; JS is enhancement-only.
+  SQLite default (MySQL optional via PDO). Server-rendered admin UI on a
+  bespoke token-driven stylesheet (Pico.css retired in 5d); no JS framework,
+  no build step; JS is enhancement-only.
 - All SQL portable across sqlite + mysql; timestamps stored as UTC `Y-m-d
   H:i:s` TEXT. Form keys are PUBLIC identifiers, stored plain.
 - Response contract (FROZEN): JSON only by default. Success `{"ok":true}`;
@@ -43,73 +46,84 @@ authenticated SMTP to the site owner.
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
+## Design system (feature/increment-5d-design) — condensed; see HISTORY
+- Single source of colour: `public/assets/tokens.css` defines the `--osf-*`
+  contract (surfaces/text/borders/accent/status/focus/type/shape) on `:root`
+  (dark default) and `[data-theme="light"]`. Values are @primer/primitives
+  v11.10.0 (MIT) resolved hex, each annotated with its Primer source token.
+  `data-palette` on `<html>` reserved; only `github` implemented. Contract is
+  shared verbatim with the docs site. A PHPUnit grep test (DesignSystemTest)
+  forbids any hardcoded colour in templates/ + `public/assets/*.css|js`
+  (exempt: tokens.css, vendor/qrcode.js; embed/osf.js out of scope).
+- `admin.css` rewritten bespoke (Pico removed): element defaults + the used
+  component set, tokens only. Nav is a TOP header bar (`.osf-header`), NO
+  sidebar/tree/search/breadcrumbs; six links + external Docs link
+  (opensendform.com, book-open icon, target=_blank rel=noopener) + toggle +
+  admin name + logout; links WRAP on narrow viewports.
+- Theme: default dark; toggle cycles Dark/Light/Auto; persisted in
+  localStorage `osf-theme`. `public/assets/theme-init.js` (external, first in
+  `<head>`, blocking) sets `data-theme` (resolved) + `data-theme-mode` (choice)
+  pre-paint → no flash. Toggle UI logic in the deferred admin.js. Icons from a
+  vendored Lucide subset (ISC) `src/Admin/icons.php` (helper `icon()`, loaded
+  by TemplateRenderer), currentColor-driven — fixes the old invisible-in-light
+  toggle glyph.
+- Responsive tables collapse to label+value cards under 640px via `data-label`
+  cells (no horizontal scroll); submission/dashboard last-error cells are
+  no-JS `<details>` expanders. Installer shares the design system (same
+  tokens/CSS/theme-init). Housekeeping: zip PHP ext added to the devcontainer
+  Dockerfile (next rebuild). SCOPE FENCE: embed osf.js + public API untouched.
+
 ## Admin deletion (fix/admin-delete) — condensed; see HISTORY
-- RULING (reverses the 5c "no delete, deferred by design" decision): admins can
-  be hard-deleted (`AdminRepository::deleteAdmin`, prepared `DELETE`);
-  deactivation stays as the reversible alternative. Both on the Admins screen.
-- Three server-enforced guards on the web POST and `bin/osf admin:delete`
-  (buttons also hidden client-side, guards re-checked on POST regardless): no
-  self-delete; the last ACTIVE admin can't be deleted (an INACTIVE one always
-  can); the web confirmation re-verifies the acting admin's CURRENT password
-  (wrong → 401 re-render). CLI has no password gate — shell access is already
-  the higher privilege. Web flow: `GET/POST /admin/admins/{id}/delete`.
+- Admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared
+  `DELETE`); deactivation stays as the reversible alternative. Three
+  server-enforced guards on the web POST and `bin/osf admin:delete`: no
+  self-delete; the last ACTIVE admin can't be deleted; the web confirmation
+  re-verifies the acting admin's CURRENT password (CLI has no password gate).
+  Web flow: `GET/POST /admin/admins/{id}/delete`.
 
 ## No-JS submission policy (fix/nojs-policy) — condensed; see HISTORY
-- `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build, rich
-  progressive-enhancement UX, never throws uncaught, degrades to native POST.
-  The snippet's `<form action>` is the submit URL, so JS-off still POSTs
-  directly; `SubmitHtmlPage` renders a self-contained success/error page.
-- Migration 009 `forms.allow_nojs` (admin checkbox): on the HTML-negotiated
-  path, `allow_nojs=0` (default) turns a missing/forged/too-young token into
-  an honest `400 javascript_required`; `allow_nojs=1` skips the check only
-  for a *missing* token. A filled honeypot always gets the generic success
-  page either way. The JSON/fetch path is unaffected.
+- `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build,
+  degrades to native POST (the snippet's `<form action>` is the submit URL;
+  `SubmitHtmlPage` renders a self-contained success/error page).
+- Migration 009 `forms.allow_nojs` (admin checkbox): on the HTML path,
+  `allow_nojs=0` (default) turns a missing/forged/too-young token into an
+  honest `400 javascript_required`; `allow_nojs=1` skips the check only for a
+  *missing* token. A filled honeypot always gets the generic success page. The
+  JSON/fetch path is unaffected.
 
 ## Dev tooling + upgrade path (chore/dev-serve-and-migrate) — condensed
-- `composer serve` → `public/dev-router.php` (PHP's built-in server 404s
-  static-looking paths otherwise); `config.process-timeout: 0`. `GET /`
-  redirects to `/admin/login` (installed) or `/install` (not).
-- `bin/osf migrate`: explicit, human-run counterpart to the silent
-  auto-migrate every `bin/osf` command already did at boot — checks
-  `Paths::isInstalled()`, reports each newly-applied migration or "Already
-  up to date.", idempotent. `MigrationRunner::pendingCount()` drives a
-  non-dismissible red dashboard banner when the schema is behind.
+- `composer serve` → `public/dev-router.php`; `GET /` redirects to
+  `/admin/login` (installed) or `/install` (not).
+- `bin/osf migrate`: explicit human-run counterpart to the boot auto-migrate;
+  idempotent. `MigrationRunner::pendingCount()` drives a non-dismissible red
+  dashboard banner when the schema is behind.
 
 ## Packaging & releases (Increment 8) — condensed; see HISTORY
-- Artefact `dist/opensendform-v{VERSION}.zip` (dist/ gitignored) extracts to one
-  `opensendform/` folder. `src/Version.php` (now 0.1.0) is the only version
-  source; the build reads it, names the zip, and it is embedded in the lock.
-- `bin/build-release.php`: `git archive` HEAD → temp, `composer install --no-dev
-  --optimize-autoloader`, prune exclusions, write INSTALL.txt + vendor/.htaccess,
-  zip. `bin/verify-release.php`: unzip + assert exclusions-absent /
-  required-present / autoloader smoke / version match (non-zero on failure).
-  Shared plumbing `bin/release_lib.php` (zip/unzip prefer ZipArchive, fall back
-  to `zip`/`unzip` CLIs — no zip ext here). Excluded: tests/, .devcontainer,
-  .github, .claude, .git, .gitignore, phpunit.xml, the 4 state files, the build
-  tooling itself. `dev-router.php` ships (inert); `tests/embed-manual.html` not.
-- `.htaccess` set: deny-all in var/, migrations/, bin/, templates/, src/, vendor/
-  (fallback layout only); `public/.htaccess` = front-controller + gzip + static
-  caching + `-Indexes`.
-- Upgrade: replace all files EXCEPT `var/` (config + SQLite db + lock survive),
-  then `bin/osf migrate` (or the dashboard banner). `bin/osf version` prints app
-  + schema version + pending count. CI `package` job (PHP 8.1 + zip ext) runs
-  build+verify and uploads the zip. Releases automation out of scope.
+- `bin/build-release.php` (git archive HEAD → `composer install --no-dev` →
+  prune exclusions → INSTALL.txt + `.htaccess` set → zip) produces
+  `dist/opensendform-v{VERSION}.zip` (one `opensendform/` folder);
+  `bin/verify-release.php` asserts exclusions-absent/required-present/
+  autoloader-smoke/version-match. Shared `bin/release_lib.php` prefers
+  ZipArchive, falls back to `zip`/`unzip` CLIs. `src/Version.php` (0.1.0) is
+  the sole version source.
+- `.htaccess` set: deny-all in var/migrations/bin/templates/src/vendor;
+  `public/.htaccess` = front-controller + gzip + caching + `-Indexes`.
+- Upgrade: replace all files EXCEPT `var/`, then `bin/osf migrate` (or the
+  dashboard banner). `bin/osf version` prints app+schema version + pending
+  count. CI `package` job builds+verifies+uploads the zip.
 
 ## Mail-setup, installer, admin auth, Turnstile, mail relay — condensed; see HISTORY
-- Installer: installed iff BOTH var/config.php and var/install.lock exist;
-  CSRF wizard writes config atomically then the lock.
-- Mail wizard (`/admin/mail`): SMTP write-back (atomic ConfigWriter,
-  write-only password), test send, SPF/DKIM/DMARC checker, `bin/osf
-  mail:status`.
+- Installer: installed iff BOTH var/config.php and var/install.lock exist; CSRF
+  wizard writes config atomically then the lock.
+- Mail wizard (`/admin/mail`): SMTP write-back (write-only password), test
+  send, SPF/DKIM/DMARC checker, `bin/osf mail:status`.
 - Admin auth: migrations 007/008 `admins`; argon2id, Base32/TOTP/recovery,
-  session seam, Csrf, AuthService (rate limits, timeouts, TOTP gate); strict
-  CSP, every screen works JS-off; forms/submissions CRUD, account/admins, 2FA.
-- Turnstile: optional PER FORM, both-or-neither; fail-open; secret never
-  exposed.
-- Mail relay: `MessageBuilder` (From always the service address, Reply-To
-  the submitter's valid email only); `DeliveryService`
-  (sent/failed+backoff/dead at MAIL_MAX_ATTEMPTS + retryDue); `bin/osf
-  mail:retry|mail:test`.
+  Csrf, AuthService (rate limits, timeouts, TOTP gate); strict CSP, every
+  screen works JS-off; forms/submissions CRUD, account/admins, 2FA.
+- Turnstile: optional PER FORM, both-or-neither; fail-open; secret never shown.
+- Mail relay: `MessageBuilder` (From always the service address, Reply-To the
+  submitter's valid email only); `DeliveryService` (sent/failed+backoff/dead at
+  MAIL_MAX_ATTEMPTS + retryDue); `bin/osf mail:retry|mail:test`.
 
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene → form lookup by URL key → origin allowlist
@@ -120,14 +134,12 @@ depends on `SubmitContext::prefersHtml` and `form.allow_nojs`; the stage
 order itself is unchanged.
 
 ## What exists now
-Everything through Increment 7 (embed artefact + no-JS fallback), plus
-chore/dev-serve-and-migrate (dev router, root redirect, `bin/osf migrate`,
-dashboard staleness banner), admin deletion (`AdminRepository::deleteAdmin`;
-`AdminsController::deleteConfirm/delete`; `bin/osf admin:delete`) and this
-sprint's packaging (see "Packaging & releases": `bin/build-release.php`,
-`bin/verify-release.php`, `bin/release_lib.php`; the `.htaccess` set;
-`bin/osf version`; the CI package job; version 0.1.0). Production Composer deps
-remain phpmailer/phpmailer ^6, slim/slim ^4, slim/psr7, php-di/php-di.
+Everything through Increment 8 (embed + no-JS fallback, dev tooling, admin
+deletion, packaging/v0.1.0), plus this sprint's design system
+(`public/assets/tokens.css` + rewritten `admin.css` + `theme-init.js`;
+`src/Admin/icons.php`; restyled `_nav.php`; card-collapse tables). Pico.css +
+the old `theme.js` were removed. Production Composer deps remain
+phpmailer/phpmailer ^6, slim/slim ^4, slim/psr7, php-di/php-di.
 
 ## Known gaps / not built (by design)
 - Synthetic monitoring + alerting — the remaining planned increment.
@@ -136,8 +148,10 @@ remain phpmailer/phpmailer ^6, slim/slim ^4, slim/psr7, php-di/php-di.
   (e.g. a post-unzip hook), and the upgrade procedure is documented rather than
   scripted. GitHub Releases automation, Softaculous, and code signing were
   explicitly out of scope for Increment 8 (manual zip attach for now).
-- The dev container's PHP has no zip extension; the build/verify scripts fall
-  back to the `zip`/`unzip` CLIs (CI adds the ext). See QUESTIONS.md Inc 8 #1.
+- The dev container's PHP had no zip extension; the build/verify scripts fall
+  back to the `zip`/`unzip` CLIs (CI adds the ext). 5d adds `zip` to the
+  devcontainer Dockerfile, so a container REBUILD closes this gap locally too;
+  the CLI fallback stays as belt-and-braces. See QUESTIONS.md Inc 8 #1.
 - Password RESET by email, roles/permissions, audit log. (Account deletion
   itself is now built — see "Admin deletion" above; still no audit trail of
   who deleted whom.)
@@ -154,7 +168,8 @@ questions (Inc 7 #1/#2, the 6b merge-order flag) were all RESOLVED.
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin
-auth. 5b. Design system + CRUD. 5c. Account mgmt + 2FA lifecycle. 6a. Installer
+auth. 5b. Design system + CRUD. 5c. Account mgmt + 2FA lifecycle. 5d. Design
+system overhaul (token contract + Starlight/GitHub parity). 6a. Installer
 engine. 6b. Email-setup wizard + installer polish. 7. Embed snippet + JS.
 8. Packaging: release zip + versioning + upgrade path + install docs. — ALL
 DONE. 9. Synthetic monitoring + alerting (renumbered from 8).

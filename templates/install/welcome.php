@@ -29,7 +29,7 @@ $badge = [
 </p>
 
 <div class="osf-table-wrap">
-    <table>
+    <table class="osf-table">
         <thead>
             <tr>
                 <th scope="col">Requirement</th>
@@ -40,13 +40,13 @@ $badge = [
         <?php foreach ($checks as $check): ?>
             <?php [$class, $label] = $badge[$check['status']] ?? ['osf-badge--muted', $check['status']]; ?>
             <tr>
-                <td>
+                <td data-label="Requirement">
                     <?= h($check['label']) ?>
                     <?php if ($check['remedy'] !== ''): ?>
                         <br><small><?= h($check['remedy']) ?></small>
                     <?php endif; ?>
                 </td>
-                <td><span class="osf-badge <?= h($class) ?>"><?= h($label) ?></span></td>
+                <td data-label="Status"><span class="osf-badge <?= h($class) ?>"><?= h($label) ?></span></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

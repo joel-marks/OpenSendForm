@@ -1104,3 +1104,68 @@
 - Deviation: the zip PHP extension the prompt assumed is absent from the
   container; handled with a ZipArchive-or-CLI fallback + `zip` ext in CI. Logged
   to QUESTIONS.md Increment 8 #1. No new Composer dependencies.
+
+## 2026-08-27 — Increment 5d: design-system overhaul (token contract + GitHub/Starlight parity)
+- Branch: feature/increment-5d-design (off latest main).
+- Single source of colour: new `public/assets/tokens.css` declares the
+  `--osf-*` contract (surfaces, text, borders, accent, status +subtle
+  variants, focus, type, shape) on `:root` (dark default) and
+  `[data-theme="light"]`. Values are @primer/primitives v11.10.0 (MIT)
+  resolved hex, fetched from the vendored functional dark/light theme files;
+  each token is annotated with the Primer source token it maps from (bg=
+  bgColor-default, text=fgColor-default, accent=fgColor-accent, etc.).
+  `data-palette="github"` set on `<html>` and reserved for future palettes.
+  Colour pairs are Primer's own AA-clearing pairs (not degraded).
+- Pico.css retired (`public/assets/vendor/pico.min.css` removed); `admin.css`
+  rewritten from scratch as a bespoke, token-only stylesheet — element
+  defaults + the component set the admin/installer actually use. No hardcoded
+  colour outside tokens.css (the one fixed exception, the QR quiet-zone white,
+  is a token, `--osf-qr-bg`).
+- Navigation: `_nav.php` rebuilt as a TOP header bar (`.osf-header`) on
+  `--osf-bg-raised` with a hairline border — NO sidebar/tree/search/
+  breadcrumbs. Brand left; six links (Dashboard/Forms/Submissions/Email/
+  Admins/Account, active = accent-subtle bg + accent text via aria-current);
+  external Docs link (opensendform.com, book-open icon, target=_blank
+  rel=noopener, "opens in a new tab" for AT); theme toggle; admin name;
+  logout. Links WRAP on narrow viewports (no hamburger/JS menu).
+- Theme: default dark; toggle cycles Dark/Light/Auto (Auto = prefers-color-
+  scheme), persisted in localStorage `osf-theme`. New external
+  `public/assets/theme-init.js` is the FIRST element in `<head>`, blocking;
+  it sets `data-theme` (resolved) + `data-theme-mode` (choice) before paint —
+  no flash. The old `theme.js` apply path was deleted; the toggle UI logic
+  moved into the deferred `admin.js`. Fixes the known invisible-in-light
+  toggle glyph: icons are currentColor SVGs, shown per `data-theme-mode`.
+- Icons: vendored Lucide subset (ISC, licence note retained) as
+  `src/Admin/icons.php` — helper `icon($name,$class,$label)` returning inline
+  SVG, loaded by `TemplateRenderer` alongside `helpers.php`. The 15 required
+  glyphs (sun/moon/monitor/copy/download/trash-2/pencil/check/x/alert-triangle/
+  info/book-open/log-out/eye/eye-off) render valid `<svg>` with
+  stroke=currentColor; unknown names render ''. Wired into nav, flash, copy/
+  delete/edit buttons.
+- Responsive: data tables carry `class="osf-table"` + per-cell `data-label`,
+  collapsing to stacked label+value cards under 640px (no horizontal scroll,
+  all info visible). Submission/dashboard last-error cells are no-JS
+  `<details>` expanders showing the full text. Destructive actions (Disable/
+  Deactivate/Delete/Disable-2FA) use the `.osf-danger` (danger + danger-subtle)
+  treatment; deactivated admin rows are muted; flash/banners use status-subtle
+  backgrounds + matching icons.
+- Installer shares the design system (same tokens.css/admin.css/theme-init.js;
+  no admin nav). Housekeeping: `.devcontainer/Dockerfile` now installs the
+  `zip` PHP extension (libzip-dev + docker-php-ext-install zip) — closes the
+  Increment 8 base-image gap on the next container rebuild; the CLI fallback
+  stays.
+- Tests: reworked the 5b asset-reference tests (pico refs → tokens.css +
+  admin.css + theme-init.js on every admin AND installer page; pico/theme.js
+  asserted ABSENT) in AdminUiTest + InstallerHttpTest, and added a live nav/
+  Docs-link assertion. New `tests/Admin/DesignSystemTest.php`: the
+  no-hardcoded-colours grep enforcement (templates + assets, exempt tokens.css
+  + vendor/qrcode.js), theme-init-first-in-head, the full token contract,
+  icon-renders-valid-SVG (+ ISC note), top-nav/Docs/no-sidebar shape, and the
+  card-collapse + details/summary hooks. Full suite green: 444 tests, 2878
+  assertions (was 435).
+- README: the existing Theming note rewritten around the token file, the
+  data-palette reservation, the shared-with-docs contract, and the no-flash
+  bootstrap.
+- Scope fence honoured: `public/embed/osf.js` and its injected styles, and the
+  public API, are untouched. No new Composer dependencies. Nothing logged
+  blocking to QUESTIONS.md (one assumption noted there).

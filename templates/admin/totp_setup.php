@@ -1,4 +1,7 @@
-<?php use function OpenSendForm\Admin\h; ?>
+<?php
+use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
+?>
 <h1>Two-factor authentication</h1>
 
 <?php if (($enabled ?? false) === true): ?>
@@ -52,7 +55,7 @@
                        autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
             </p>
             <p>
-                <button type="submit" class="secondary">Disable two-factor authentication</button>
+                <button type="submit" class="osf-danger">Disable two-factor authentication</button>
             </p>
         </form>
     </section>
@@ -77,7 +80,7 @@
     <p>
         <span class="osf-copy">
             <code><?= h($manualKey) ?></code>
-            <button type="button" class="secondary outline" data-copy="<?= h($manualKey) ?>">Copy</button>
+            <button type="button" class="secondary outline" data-copy="<?= h($manualKey) ?>"><?= icon('copy') ?> Copy</button>
         </span>
     </p>
 

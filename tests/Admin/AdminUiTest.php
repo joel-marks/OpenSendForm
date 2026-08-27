@@ -557,19 +557,28 @@ final class AdminUiTest extends TestCase
     public function testVendoredAndEnhancementAssetsExist(): void
     {
         $assets = dirname(__DIR__, 2) . '/public/assets';
-        self::assertFileExists($assets . '/vendor/pico.min.css');
-        self::assertFileExists($assets . '/vendor/qrcode.js');
+        // The design-system contract: a single token file, the bespoke
+        // stylesheet, the blocking theme bootstrap and the deferred enhancer.
+        self::assertFileExists($assets . '/tokens.css');
         self::assertFileExists($assets . '/admin.css');
-        self::assertFileExists($assets . '/theme.js');
+        self::assertFileExists($assets . '/theme-init.js');
         self::assertFileExists($assets . '/admin.js');
+        self::assertFileExists($assets . '/vendor/qrcode.js');
 
-        // Pinned version + licence provenance recorded in each vendored file.
-        self::assertStringContainsString('2.0.6', file_get_contents($assets . '/vendor/pico.min.css'));
+        // Pico.css was retired in 5d; the old theme.js apply path is gone.
+        self::assertFileDoesNotExist($assets . '/vendor/pico.min.css');
+        self::assertFileDoesNotExist($assets . '/theme.js');
+
+        // qrcode.js keeps its pinned version + licence provenance.
         self::assertStringContainsString('1.4.4', file_get_contents($assets . '/vendor/qrcode.js'));
         self::assertStringContainsString('MIT', file_get_contents($assets . '/vendor/qrcode.js'));
+
+        // tokens.css records the Primer provenance it was vendored from.
+        $tokens = (string) file_get_contents($assets . '/tokens.css');
+        self::assertStringContainsString('primer', strtolower($tokens));
     }
 
-    public function testEveryAdminScreenReferencesPicoCss(): void
+    public function testEveryAdminScreenReferencesTheDesignSystem(): void
     {
         $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
         $this->login();
@@ -588,24 +597,59 @@ final class AdminUiTest extends TestCase
         foreach ($routes as $label => $route) {
             $response = $this->get($route);
             self::assertSame(200, $response->getStatusCode(), "{$label} ({$route}) did not return 200");
-            self::assertStringContainsString(
-                '/assets/vendor/pico.min.css',
-                (string) $response->getBody(),
-                "{$label} ({$route}) is missing the shared layout's pico.min.css reference"
-            );
+            $body = (string) $response->getBody();
+            foreach (['/assets/tokens.css', '/assets/admin.css', '/assets/theme-init.js'] as $asset) {
+                self::assertStringContainsString(
+                    $asset,
+                    $body,
+                    "{$label} ({$route}) is missing the shared layout's {$asset} reference"
+                );
+            }
+            self::assertStringNotContainsString('/assets/vendor/pico.min.css', $body, "{$label} still references pico");
         }
     }
 
     public function testLayoutReferencesSelfHostedAssets(): void
     {
+        // The login page renders chrome-free (no top nav), so it carries no
+        // external Docs link — a clean check that every asset is self-hosted.
         $body = (string) $this->get('/admin/login')->getBody();
-        self::assertStringContainsString('/assets/vendor/pico.min.css', $body);
+        self::assertStringContainsString('/assets/tokens.css', $body);
         self::assertStringContainsString('/assets/admin.css', $body);
-        self::assertStringContainsString('/assets/theme.js', $body);
+        self::assertStringContainsString('/assets/theme-init.js', $body);
         self::assertStringContainsString('/assets/admin.js', $body);
-        // No CDN references at runtime.
+        self::assertStringNotContainsString('/assets/vendor/pico.min.css', $body);
+        // No CDN or external references on this chrome-free page.
         self::assertStringNotContainsString('http://', str_replace('http-equiv', '', $body));
         self::assertStringNotContainsString('https://', $body);
+    }
+
+    public function testTopNavRendersWithActiveLinkAndDocsLink(): void
+    {
+        $this->login();
+        $body = (string) $this->get('/admin')->getBody();
+
+        // Header bar, not a sidebar/docs layout.
+        self::assertStringContainsString('class="osf-header"', $body);
+        self::assertStringNotContainsString('<aside', $body);
+
+        // The active destination is marked for assistive tech and styling.
+        self::assertMatchesRegularExpression(
+            '/<a class="osf-nav-link" href="\/admin" aria-current="page">Dashboard<\/a>/',
+            $body
+        );
+
+        // External Docs link: new tab + noopener, and a rendered inline icon.
+        self::assertStringContainsString(
+            'href="https://opensendform.com"',
+            $body
+        );
+        self::assertStringContainsString('target="_blank"', $body);
+        self::assertStringContainsString('rel="noopener"', $body);
+        self::assertStringContainsString('<svg', $body); // Lucide icons render inline
+
+        // Theme toggle present with an accessible label.
+        self::assertStringContainsString('data-theme-toggle', $body);
     }
 
     public function testAdminTemplatesContainNoInlineHandlersOrScripts(): void

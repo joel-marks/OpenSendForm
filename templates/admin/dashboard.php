@@ -2,6 +2,7 @@
 use function OpenSendForm\Admin\h;
 use function OpenSendForm\Admin\truncate;
 use function OpenSendForm\Admin\statusBadgeClass;
+use function OpenSendForm\Admin\icon;
 
 /**
  * @var int   $activeForms
@@ -18,8 +19,9 @@ use function OpenSendForm\Admin\statusBadgeClass;
     <?php /* Not dismissible: this stays until the admin actually runs the
              migration, unlike the 2FA/mail nudges below. */ ?>
     <div class="osf-flash osf-flash--error" role="alert">
-        <strong>Database update required</strong> &mdash; run <code>bin/osf migrate</code>
-        (<?= h((string) $pendingMigrations) ?> pending migration<?= $pendingMigrations === 1 ? '' : 's' ?>).
+        <?= icon('alert-triangle') ?>
+        <span><strong>Database update required</strong> &mdash; run <code>bin/osf migrate</code>
+        (<?= h((string) $pendingMigrations) ?> pending migration<?= $pendingMigrations === 1 ? '' : 's' ?>).</span>
     </div>
 <?php endif; ?>
 
@@ -29,6 +31,7 @@ use function OpenSendForm\Admin\statusBadgeClass;
              returns after 2FA is disabled again. */ ?>
     <div class="osf-flash osf-flash--info osf-nudge" role="note">
         <span>
+            <?= icon('info') ?>
             <strong>Protect your account.</strong>
             Two-factor authentication is not enabled.
             <a href="/admin/totp/setup">Set it up now</a>.
@@ -46,6 +49,7 @@ use function OpenSendForm\Admin\statusBadgeClass;
              mail-setup wizard. Returns if sending is turned off again. */ ?>
     <div class="osf-flash osf-flash--info osf-nudge" role="note">
         <span>
+            <?= icon('info') ?>
             <strong>Email sending is not set up yet.</strong>
             Submissions are being saved but not emailed to you.
             <a href="/admin/mail">Set up email now</a>.
@@ -81,7 +85,7 @@ use function OpenSendForm\Admin\statusBadgeClass;
     <p>No failed or dead submissions. 🎉</p>
 <?php else: ?>
     <div class="osf-table-wrap">
-        <table>
+        <table class="osf-table">
             <thead>
                 <tr>
                     <th scope="col">Form</th>
@@ -93,18 +97,30 @@ use function OpenSendForm\Admin\statusBadgeClass;
             </thead>
             <tbody>
             <?php foreach ($recent as $row): ?>
-                <?php $status = (string) $row['status']; ?>
+                <?php
+                $status = (string) $row['status'];
+                $error = (string) ($row['last_error'] ?? '');
+                ?>
                 <tr>
-                    <td>
+                    <td data-label="Form">
                         <a href="/admin/submissions?status=<?= h($status) ?>&amp;form=<?= h((string) $row['form_id']) ?>">
                             <?= h((string) ($row['form_name'] ?? ('#' . $row['form_id']))) ?>
                         </a>
                     </td>
-                    <td><?= h((string) $row['created_at']) ?></td>
-                    <td><span class="osf-badge <?= h(statusBadgeClass($status)) ?>"><?= h($status) ?></span></td>
-                    <td><?= h((string) $row['attempts']) ?></td>
-                    <td class="osf-truncate" title="<?= h((string) ($row['last_error'] ?? '')) ?>">
-                        <?= h(truncate($row['last_error'] ?? '', 80)) ?>
+                    <td data-label="Created"><?= h((string) $row['created_at']) ?></td>
+                    <td data-label="Status"><span class="osf-badge <?= h(statusBadgeClass($status)) ?>"><?= h($status) ?></span></td>
+                    <td data-label="Attempts"><?= h((string) $row['attempts']) ?></td>
+                    <td data-label="Last error">
+                        <?php if ($error === ''): ?>
+                            <span aria-hidden="true">—</span>
+                        <?php elseif (mb_strlen($error) <= 80): ?>
+                            <?= h($error) ?>
+                        <?php else: ?>
+                            <details class="osf-error-detail">
+                                <summary><?= h(truncate($error, 80)) ?></summary>
+                                <pre><?= h($error) ?></pre>
+                            </details>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>

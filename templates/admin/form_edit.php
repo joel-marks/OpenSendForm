@@ -1,5 +1,6 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 
 /**
  * Create/edit form. Shared by "New form" and "Edit form": $isNew toggles the
@@ -62,7 +63,7 @@ if (($installUrl) !== '' && $formKey !== null) {
         <strong>Form key</strong> (public identifier used by the embed snippet):<br>
         <span class="osf-copy">
             <code><?= h($formKey) ?></code>
-            <button type="button" class="secondary outline" data-copy="<?= h($formKey) ?>">Copy</button>
+            <button type="button" class="secondary outline" data-copy="<?= h($formKey) ?>"><?= icon('copy') ?> Copy</button>
         </span>
     </p>
 <?php endif; ?>
@@ -172,7 +173,7 @@ if (($installUrl) !== '' && $formKey !== null) {
             tags to suit — only the wrapping <code>&lt;form&gt;</code> and the
             script line must stay as-is.</p>
         <p class="osf-copy">
-            <button type="button" class="secondary outline" data-copy="<?= h($snippet) ?>">Copy embed code</button>
+            <button type="button" class="secondary outline" data-copy="<?= h($snippet) ?>"><?= icon('copy') ?> Copy embed code</button>
         </p>
         <pre><code><?= h($snippet) ?></code></pre>
         <small>Theme it with CSS variables (<code>--osf-accent</code>,

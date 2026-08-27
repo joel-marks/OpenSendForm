@@ -164,3 +164,30 @@
    fallback. Both produce/verify the same artefact. No architect input needed —
    flagged only so the extension gap in the base image is on record (worth
    adding `zip` to the devcontainer Dockerfile in a future housekeeping pass).
+
+## Increment 5d
+
+1. **Devcontainer zip extension — now added (follows up Inc 8 #1).** The
+   housekeeping pass suggested in Increment 8 #1 is done: `.devcontainer/
+   Dockerfile` now installs `libzip-dev` + `docker-php-ext-install zip`, so the
+   `ZipArchive` path works locally after the next container REBUILD. The
+   CLI fallback in `bin/release_lib.php` is retained as belt-and-braces. No
+   architect input needed — noted for the record.
+
+2. **Shared token contract with the docs site — ASSUMPTION, non-blocking.** The
+   task frames `tokens.css` as "shared with the docs site" and the README now
+   says the docs site loads the same `tokens.css`. The docs site
+   (opensendform.com) is out of this repo's scope, so this sprint only produces
+   the app-side contract; keeping the two in sync is a cross-repo convention,
+   not something enforced here. If the docs site should instead vendor a copy or
+   consume a published artefact, say so and we'll adjust the README wording.
+
+3. **No-hardcoded-colours grep scope — DESIGN NOTE, non-blocking.** The
+   enforcement test (`DesignSystemTest::testNoHardcodedColoursOutsideTokens`)
+   forbids hex and `rgb()/hsl()` everywhere it scans (templates/ +
+   `public/assets/*.css|js`), and additionally forbids CSS *named* colours in
+   `.css/.js` files only — named-colour matching is skipped for templates to
+   avoid false positives on English prose. Exemptions: `tokens.css` (the
+   contract) and `vendor/qrcode.js`; `public/embed/osf.js` is out of scope by
+   the sprint's scope fence. Flagged so the chosen enforcement boundary is on
+   record.

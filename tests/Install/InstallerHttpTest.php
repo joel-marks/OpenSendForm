@@ -20,8 +20,8 @@ use Slim\Psr7\Factory\ServerRequestFactory;
  * through the app factory against a throwaway temp directory (SQLite) with an
  * array-backed session and a fixed clock. Covers the full happy-path wizard,
  * step-order enforcement, the not-installed → /install redirects and the
- * installed → 404 direction, and the design-system contract (CSP, pico.css,
- * no inline handlers). Never touches the real project's var/ or a network.
+ * installed → 404 direction, and the design-system contract (CSP, shared
+ * tokens/CSS, no inline handlers). Never touches the real project's var/ or a network.
  */
 final class InstallerHttpTest extends TestCase
 {
@@ -239,12 +239,16 @@ final class InstallerHttpTest extends TestCase
 
     // --- Design-system contract -------------------------------------------
 
-    public function testInstallScreensUseThePicoDesignSystemAndCarryCsp(): void
+    public function testInstallScreensUseTheDesignSystemAndCarryCsp(): void
     {
-        $response = $this->get('/install');
-        self::assertStringContainsString('/assets/vendor/pico.min.css', (string) $response->getBody());
-        self::assertStringContainsString('/assets/admin.css', (string) $response->getBody());
-        self::assertNotSame('', $response->getHeaderLine('Content-Security-Policy'));
+        $body = (string) $this->get('/install')->getBody();
+        // The installer shares the admin design system (tokens + bespoke CSS +
+        // the blocking theme bootstrap); Pico.css was retired in 5d.
+        self::assertStringContainsString('/assets/tokens.css', $body);
+        self::assertStringContainsString('/assets/admin.css', $body);
+        self::assertStringContainsString('/assets/theme-init.js', $body);
+        self::assertStringNotContainsString('/assets/vendor/pico.min.css', $body);
+        self::assertNotSame('', $this->get('/install')->getHeaderLine('Content-Security-Policy'));
     }
 
     public function testInstallTemplatesHaveNoInlineHandlersOrScripts(): void

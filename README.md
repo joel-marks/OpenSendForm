@@ -225,10 +225,12 @@ token is invalid rejects it.
 
 ## Admin panel
 
-The admin panel is served from `/admin` — server-rendered plain PHP on
-[Pico.css](https://picocss.com/), no JavaScript framework and no build step.
-Every screen works with JavaScript disabled; JS only adds progressive
-enhancements (theme toggle, click-to-copy, QR code, segmented 2FA inputs).
+The admin panel is served from `/admin` — server-rendered plain PHP with a
+bespoke stylesheet built on the OpenSendForm design tokens (see *Theming*
+below), no JavaScript framework and no build step. Every screen works with
+JavaScript disabled; JS only adds progressive enhancements (theme toggle,
+click-to-copy, QR code, segmented 2FA inputs). Navigation lives in a single
+top header bar (no sidebar); on narrow screens the links simply wrap.
 
 ### Screens
 
@@ -298,13 +300,29 @@ design; it keeps a self-hosted, single-site tool simple.
 
 ### Theming
 
-The UI ships a light and a dark palette. By default it follows the
-browser/OS `prefers-color-scheme`; a toggle in the top nav sets an explicit
-choice, persisted in `localStorage` and applied before first paint (no
-flash). All colour pairs meet WCAG AA contrast. Pico.css and the QR-code
-generator are vendored under `public/assets/vendor/` — nothing is fetched
-from a CDN at runtime, and a strict Content-Security-Policy on `/admin`
-keeps every source self-hosted.
+Colour is defined in one place: **`public/assets/tokens.css`** declares the
+`--osf-*` design-token contract (surfaces, text, borders, accent, status,
+focus, type, shape). Dark is the default (`:root`); the light palette lives
+under `[data-theme="light"]`. Every other stylesheet — the bespoke
+`public/assets/admin.css` — and every template consumes those tokens only; a
+PHPUnit test forbids any hardcoded colour outside `tokens.css`.
+
+The palette values are the GitHub **Primer primitives** (`@primer/primitives`,
+MIT) vendored as resolved hex, each token annotated with the Primer source it
+maps from. All colour pairs meet WCAG AA contrast. The `data-palette`
+attribute on `<html>` is reserved for alternative palettes; only `github` is
+implemented today. Because the token contract is shared verbatim with the docs
+site, the app and **opensendform.com** render in one visual language — the docs
+site loads the same `tokens.css`.
+
+The theme toggle in the top nav cycles **Dark → Light → Auto** (Auto follows
+`prefers-color-scheme`), persisted in `localStorage` under `osf-theme`. A tiny
+blocking script (`public/assets/theme-init.js`, first in `<head>`) applies the
+stored choice before first paint, so there is no flash of the wrong theme. Its
+sun/moon/monitor icons are from the vendored Lucide subset (ISC) and inherit
+`currentColor`, so they stay visible in every theme. Nothing is fetched from a
+CDN at runtime, and a strict Content-Security-Policy on `/admin` keeps every
+source self-hosted.
 
 ### Administrators & 2FA
 

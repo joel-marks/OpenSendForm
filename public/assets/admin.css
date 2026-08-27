@@ -1,195 +1,449 @@
 /*
- * OpenSendForm admin overrides.
+ * OpenSendForm — admin & installer stylesheet.
  *
- * Layered on top of vendored Pico CSS v2 (pico.min.css). Defines our brand
- * palette as CSS custom properties for BOTH the light and dark colour
- * schemes, plus the handful of components Pico does not ship (status/active
- * badges, the click-to-copy key, flash messages, segmented TOTP boxes and the
- * QR container). Every foreground/background pair here is chosen to clear
- * WCAG AA contrast in its scheme.
- *
- * Theme resolution: with no explicit choice the browser's prefers-color-scheme
- * wins (Pico's default). A manual choice sets data-theme="light|dark" on
- * <html> (see theme.js), which Pico and the rules below both honour.
+ * Bespoke, dependency-free (Pico.css was retired in increment 5d). Provides
+ * element defaults plus the component set the admin/installer actually use.
+ * Consumes ONLY the design tokens from tokens.css — this file contains no
+ * literal colour value (a PHPUnit grep test enforces that). The visual
+ * language mirrors GitHub/Starlight: flat surfaces, hairline borders, a
+ * single accent, generous line-height.
  */
 
-/* --- Brand palette ---------------------------------------------------- */
+/* --- Reset & base ----------------------------------------------------- */
 
-/* Light scheme (default, and the auto default when the OS is light). */
-:root {
-    --osf-badge-radius: 0.35rem;
-
-    --osf-ok-bg: #d8f3e3;
-    --osf-ok-fg: #0f5132;
-    --osf-warn-bg: #fff0cc;
-    --osf-warn-fg: #664d03;
-    --osf-danger-bg: #fadbd8;
-    --osf-danger-fg: #842029;
-    --osf-muted-bg: #e5e7eb;
-    --osf-muted-fg: #374151;
-    --osf-info-bg: #d6e4ff;
-    --osf-info-fg: #1e3a8a;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
-/* Dark scheme via the OS preference (only when the user has not chosen). */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme]) {
-        --osf-ok-bg: #123524;
-        --osf-ok-fg: #7ee2ab;
-        --osf-warn-bg: #3d3417;
-        --osf-warn-fg: #f5d67b;
-        --osf-danger-bg: #3d1a1d;
-        --osf-danger-fg: #f5a3a3;
-        --osf-muted-bg: #2a2f3a;
-        --osf-muted-fg: #cbd5e1;
-        --osf-info-bg: #17233d;
-        --osf-info-fg: #9dbcff;
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--osf-bg);
+    color: var(--osf-text);
+    font-family: var(--osf-font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+    font-family: var(--osf-font-heading);
+    line-height: 1.25;
+    margin: 1.5rem 0 0.75rem;
+}
+
+h1 { font-size: 1.6rem; font-weight: 600; }
+h2 { font-size: 1.25rem; font-weight: 600; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+
+p { margin: 0 0 1rem; }
+
+a {
+    color: var(--osf-accent);
+    text-decoration: none;
+}
+
+a:hover { text-decoration: underline; }
+
+small {
+    font-size: 0.85rem;
+    color: var(--osf-text-muted);
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--osf-border-muted);
+    margin: 1.5rem 0;
+}
+
+code, pre, kbd, samp {
+    font-family: var(--osf-font-mono);
+    font-size: 0.9em;
+}
+
+code {
+    background: var(--osf-bg-inset);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius);
+    padding: 0.1rem 0.35rem;
+}
+
+pre {
+    background: var(--osf-bg-inset);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;   /* wide code scrolls inside its own box */
+}
+
+pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+}
+
+:focus-visible {
+    outline: 2px solid var(--osf-focus-ring);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
     }
 }
 
-/* Dark scheme via an explicit manual choice. */
-[data-theme="dark"] {
-    --osf-ok-bg: #123524;
-    --osf-ok-fg: #7ee2ab;
-    --osf-warn-bg: #3d3417;
-    --osf-warn-fg: #f5d67b;
-    --osf-danger-bg: #3d1a1d;
-    --osf-danger-fg: #f5a3a3;
-    --osf-muted-bg: #2a2f3a;
-    --osf-muted-fg: #cbd5e1;
-    --osf-info-bg: #17233d;
-    --osf-info-fg: #9dbcff;
+/* --- Layout column ---------------------------------------------------- */
+
+.container {
+    width: 100%;
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
 }
 
-/* --- Top navigation --------------------------------------------------- */
+main.container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+
+/* --- Inline icons ----------------------------------------------------- */
+
+.osf-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.15em;
+    flex: none;
+}
+
+/* Screen-reader-only text (e.g. the Docs link's "opens in a new tab"). */
+.osf-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* --- Top navigation (header bar, no sidebar) -------------------------- */
+
+.osf-header {
+    background: var(--osf-bg-raised);
+    border-bottom: 1px solid var(--osf-border);
+}
 
 .osf-nav {
-    border-bottom: 1px solid var(--pico-muted-border-color);
-    margin-bottom: 1.5rem;
+    display: flex;
+    flex-wrap: wrap;            /* narrow viewports wrap to more rows */
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
 }
 
-.osf-nav .osf-brand {
+.osf-brand {
     font-weight: 700;
+    color: var(--osf-text);
+    margin-right: 0.5rem;
 }
 
-.osf-nav .osf-admin-name {
-    color: var(--pico-muted-color);
+.osf-brand:hover { text-decoration: none; }
+
+.osf-nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.osf-nav-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;         /* push actions to the right on wide rows */
+}
+
+.osf-nav-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--osf-radius);
+    color: var(--osf-text-muted);
+    font-size: 0.95rem;
+}
+
+.osf-nav-link:hover {
+    background: var(--osf-bg-inset);
+    color: var(--osf-text);
+    text-decoration: none;
+}
+
+.osf-nav-link[aria-current="page"] {
+    background: var(--osf-accent-subtle);
+    color: var(--osf-accent);
+    font-weight: 600;
+}
+
+.osf-admin-name {
+    color: var(--osf-text-muted);
     font-size: 0.9rem;
 }
 
-/* Keep the logout form inline in the nav without Pico's block spacing. */
+.osf-nav .osf-inline-form,
 .osf-nav form {
     display: inline;
     margin: 0;
 }
 
-.osf-nav form button {
-    width: auto;
-    margin: 0;
-    padding: 0.25rem 0.6rem;
-}
-
-/* Icon-only theme toggle. */
+/* Icon-only theme toggle: the visible glyph is driven by data-theme-mode
+   on <html> (set by theme-init.js) so it reflects the chosen mode. */
 .osf-theme-toggle {
-    width: auto;
-    margin: 0;
-    padding: 0.25rem 0.6rem;
-    background: transparent;
-    border-color: var(--pico-muted-border-color);
-    color: var(--pico-color);
-}
-
-/* --- Badges & status pills -------------------------------------------- */
-
-.osf-badge {
-    display: inline-block;
-    padding: 0.12rem 0.5rem;
-    border-radius: var(--osf-badge-radius);
-    font-size: 0.78rem;
-    font-weight: 600;
-    line-height: 1.5;
-    white-space: nowrap;
-}
-
-.osf-badge--ok      { background: var(--osf-ok-bg);     color: var(--osf-ok-fg); }
-.osf-badge--warn    { background: var(--osf-warn-bg);   color: var(--osf-warn-fg); }
-.osf-badge--danger  { background: var(--osf-danger-bg); color: var(--osf-danger-fg); }
-.osf-badge--muted   { background: var(--osf-muted-bg);  color: var(--osf-muted-fg); }
-.osf-badge--info    { background: var(--osf-info-bg);   color: var(--osf-info-fg); }
-
-/* --- Click-to-copy key ------------------------------------------------ */
-
-.osf-copy {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-}
-
-.osf-copy code {
-    font-size: 0.85rem;
-}
-
-.osf-copy button {
+    justify-content: center;
     width: auto;
     margin: 0;
-    padding: 0.1rem 0.5rem;
-    font-size: 0.78rem;
+    padding: 0.35rem 0.5rem;
+    background: transparent;
+    color: var(--osf-text-muted);
+    border: 1px solid var(--osf-border);
+    border-radius: var(--osf-radius);
+    cursor: pointer;
+    font-size: 1rem;
 }
 
-/* --- Flash messages --------------------------------------------------- */
+.osf-theme-toggle:hover { color: var(--osf-text); }
 
-.osf-flash {
-    padding: 0.75rem 1rem;
-    border-radius: var(--pico-border-radius);
-    margin-bottom: 1rem;
+/* Default (no JS / attribute absent): show the moon (dark is the default). */
+.osf-theme-toggle .osf-icon-sun,
+.osf-theme-toggle .osf-icon-monitor { display: none; }
+.osf-theme-toggle .osf-icon-moon { display: inline-block; }
+
+[data-theme-mode="light"] .osf-theme-toggle .osf-icon-moon { display: none; }
+[data-theme-mode="light"] .osf-theme-toggle .osf-icon-sun { display: inline-block; }
+[data-theme-mode="auto"] .osf-theme-toggle .osf-icon-moon { display: none; }
+[data-theme-mode="auto"] .osf-theme-toggle .osf-icon-monitor { display: inline-block; }
+
+/* --- Buttons ---------------------------------------------------------- */
+
+button,
+[role="button"],
+input[type="submit"] {
+    display: inline-block;
+    font: inherit;
+    font-weight: 500;
+    line-height: 1.4;
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--osf-radius);
+    border: 1px solid var(--osf-accent-emphasis);
+    background: var(--osf-accent-emphasis);
+    color: var(--osf-text-on-accent);
+    cursor: pointer;
+    text-decoration: none;
 }
 
-.osf-flash--success { background: var(--osf-ok-bg);     color: var(--osf-ok-fg); }
-.osf-flash--error   { background: var(--osf-danger-bg); color: var(--osf-danger-fg); }
-.osf-flash--info    { background: var(--osf-info-bg);   color: var(--osf-info-fg); }
+button:hover,
+[role="button"]:hover,
+input[type="submit"]:hover { text-decoration: none; filter: brightness(1.08); }
 
-/* Dashboard 2FA nudge: an info flash with the dismiss button pushed right. */
-.osf-nudge {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex-wrap: wrap;
+/* Secondary: neutral surface + hairline border. */
+.secondary {
+    background: var(--osf-bg-raised);
+    color: var(--osf-text);
+    border-color: var(--osf-border);
 }
 
-/* Separated destructive-action block (e.g. disabling two-factor auth). */
-.osf-danger-zone {
-    margin-top: 2rem;
-    padding: 1rem 1.25rem;
-    border: 1px solid var(--osf-danger-fg);
-    border-radius: var(--pico-border-radius);
+/* Outline: transparent secondary. */
+.outline {
+    background: transparent;
+    color: var(--osf-text);
+    border-color: var(--osf-border);
 }
 
-/* Recovery codes shown one per line in a monospace block. */
-.osf-recovery-block {
-    padding: 0.75rem 1rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-all;
+/* Destructive: delete / disable / deactivate. */
+.osf-danger {
+    background: var(--osf-danger-subtle);
+    color: var(--osf-danger);
+    border-color: var(--osf-danger);
 }
 
-.osf-recovery-block code {
-    background: none;
+/* Link-styled button (e.g. the recovery-code mode toggle). */
+.osf-link-button {
+    display: inline-block;
+    width: auto;
+    margin: 0 0 1rem;
     padding: 0;
+    background: none;
+    border: none;
+    color: var(--osf-accent);
+    text-decoration: underline;
+    font-size: 0.9rem;
+    cursor: pointer;
 }
 
-/* --- Tables ----------------------------------------------------------- */
+/* --- Forms ------------------------------------------------------------ */
 
-/* Wide tables scroll horizontally inside their own box on small screens. */
-.osf-table-wrap {
-    overflow-x: auto;
+label {
+    display: block;
+    margin: 0.75rem 0 0.35rem;
+    font-weight: 500;
 }
 
-.osf-truncate {
-    max-width: 22rem;
+input,
+textarea,
+select {
+    width: 100%;
+    font: inherit;
+    color: var(--osf-text);
+    background: var(--osf-bg-inset);
+    border: 1px solid var(--osf-border);
+    border-radius: var(--osf-radius);
+    padding: 0.5rem 0.65rem;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    outline: 2px solid var(--osf-focus-ring);
+    outline-offset: 0;
+    border-color: var(--osf-accent-emphasis);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    width: auto;
+    margin-right: 0.4rem;
+    vertical-align: middle;
+    accent-color: var(--osf-accent-emphasis);
+}
+
+/* Checkbox/radio labels are inline (the input sits inside the label). */
+label > input[type="checkbox"],
+label > input[type="radio"] {
+    margin-top: 0;
+}
+
+::placeholder { color: var(--osf-text-subtle); }
+
+fieldset {
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius);
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+}
+
+legend { padding: 0 0.4rem; }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 1rem;
+}
+
+form { margin-bottom: 1rem; }
+
+/* --- Cards / sections ------------------------------------------------- */
+
+section {
+    background: var(--osf-bg-raised);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius-lg);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+section > h2:first-child,
+section > h1:first-child { margin-top: 0; }
+
+/* --- Tables (collapse to cards when narrow) --------------------------- */
+
+.osf-table-wrap { overflow-x: auto; }
+
+.osf-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--osf-bg-raised);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius-lg);
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+}
+
+.osf-table th,
+.osf-table td {
+    text-align: left;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--osf-border-muted);
+    vertical-align: top;
+}
+
+.osf-table thead th {
+    background: var(--osf-bg-inset);
+    color: var(--osf-text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.osf-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Deactivated admin rows read as muted. */
+.osf-table tr.osf-row-muted td { color: var(--osf-text-muted); }
+
+@media (max-width: 640px) {
+    /* Stack every row into a label+value card — all data visible, no
+       horizontal scroll. Cells expose their column name via data-label. */
+    .osf-table,
+    .osf-table thead,
+    .osf-table tbody,
+    .osf-table tr,
+    .osf-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .osf-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+    }
+
+    .osf-table tr {
+        border: 1px solid var(--osf-border-muted);
+        border-radius: var(--osf-radius);
+        margin-bottom: 0.75rem;
+        padding: 0.35rem 0.75rem;
+        background: var(--osf-bg-raised);
+    }
+
+    .osf-table td {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        border-bottom: 1px solid var(--osf-border-muted);
+        padding: 0.45rem 0;
+    }
+
+    .osf-table tr td:last-child { border-bottom: 0; }
+
+    .osf-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--osf-text-muted);
+        margin-right: 1rem;
+    }
 }
 
 .osf-inline-form {
@@ -200,8 +454,30 @@
 .osf-inline-form button {
     width: auto;
     margin: 0;
-    padding: 0.2rem 0.6rem;
-    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+.osf-truncate {
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Expandable full error text (no-JS-safe details/summary). */
+.osf-error-detail summary {
+    cursor: pointer;
+    color: var(--osf-text-muted);
+}
+
+.osf-error-detail[open] summary { margin-bottom: 0.35rem; }
+
+.osf-error-detail pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    font-size: 0.85rem;
 }
 
 /* A link disabled by a JS gate (e.g. the recovery-codes acknowledgement). */
@@ -210,19 +486,101 @@
     pointer-events: none;
 }
 
-/* --- Link-styled button (e.g. the recovery-code mode toggle) ---------- */
+/* --- Badges & status pills -------------------------------------------- */
 
-.osf-link-button {
+.osf-badge {
     display: inline-block;
+    padding: 0.12rem 0.5rem;
+    border-radius: 2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.osf-badge--ok     { background: var(--osf-success-subtle); color: var(--osf-success); }
+.osf-badge--warn   { background: var(--osf-warning-subtle); color: var(--osf-warning); }
+.osf-badge--danger { background: var(--osf-danger-subtle);  color: var(--osf-danger); }
+.osf-badge--info   { background: var(--osf-info-subtle);    color: var(--osf-info); }
+.osf-badge--muted  { background: var(--osf-bg-inset);       color: var(--osf-text-muted); }
+
+/* --- Click-to-copy key ------------------------------------------------ */
+
+.osf-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.osf-copy code { font-size: 0.85rem; }
+
+.osf-copy button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     width: auto;
-    margin: 0 0 1rem;
-    padding: 0;
+    margin: 0;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.78rem;
+}
+
+/* --- Flash messages & banners ----------------------------------------- */
+
+.osf-flash {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius);
+    margin-bottom: 1rem;
+}
+
+/* Leading status icon sits inline with the message text. */
+.osf-flash > .osf-icon {
+    vertical-align: -0.2em;
+    margin-right: 0.4rem;
+}
+
+.osf-flash--success { background: var(--osf-success-subtle); color: var(--osf-text); border-color: var(--osf-success); }
+.osf-flash--error   { background: var(--osf-danger-subtle);  color: var(--osf-text); border-color: var(--osf-danger); }
+.osf-flash--info    { background: var(--osf-info-subtle);    color: var(--osf-text); border-color: var(--osf-info); }
+
+.osf-flash--success > .osf-icon { color: var(--osf-success); }
+.osf-flash--error > .osf-icon   { color: var(--osf-danger); }
+.osf-flash--info > .osf-icon    { color: var(--osf-info); }
+
+/* Dashboard nudge: message + dismiss button pushed to the right. */
+.osf-nudge {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Separated destructive-action block (e.g. disabling two-factor auth). */
+.osf-danger-zone {
+    margin-top: 2rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--osf-danger);
+    border-radius: var(--osf-radius);
+    background: var(--osf-danger-subtle);
+}
+
+/* Recovery codes shown one per line in a monospace block. */
+.osf-recovery-block {
+    padding: 0.75rem 1rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--osf-bg-inset);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius);
+}
+
+.osf-recovery-block code {
     background: none;
-    border: none;
-    color: var(--pico-primary);
-    text-decoration: underline;
-    font-size: 0.9rem;
-    cursor: pointer;
+    border: 0;
+    padding: 0;
 }
 
 /* --- Segmented TOTP code inputs (progressive enhancement) ------------- */
@@ -246,8 +604,8 @@
 .osf-qr {
     display: inline-block;
     padding: 0.75rem;
-    background: #ffffff;   /* QR needs a light quiet zone in any theme. */
-    border-radius: var(--pico-border-radius);
+    background: var(--osf-qr-bg);   /* QR needs a light quiet zone in any theme */
+    border-radius: var(--osf-radius);
     line-height: 0;
 }
 
@@ -267,6 +625,10 @@
 
 .osf-stat {
     margin: 0;
+    padding: 1rem 1.25rem;
+    background: var(--osf-bg-raised);
+    border: 1px solid var(--osf-border-muted);
+    border-radius: var(--osf-radius-lg);
 }
 
 .osf-stat .osf-stat-value {
@@ -276,6 +638,6 @@
 }
 
 .osf-stat .osf-stat-label {
-    color: var(--pico-muted-color);
+    color: var(--osf-text-muted);
     font-size: 0.85rem;
 }

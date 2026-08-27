@@ -1,5 +1,6 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 
 /**
  * @var int    $targetId
@@ -31,6 +32,6 @@ use function OpenSendForm\Admin\h;
     <label for="current_password">Your current password</label>
     <input type="password" id="current_password" name="current_password"
            autocomplete="current-password" required>
-    <button type="submit" class="secondary outline">Permanently delete <?= h($targetEmail) ?></button>
+    <button type="submit" class="osf-danger"><?= icon('trash-2') ?> Permanently delete <?= h($targetEmail) ?></button>
     <a href="/admin/admins" role="button" class="secondary">Cancel</a>
 </form>

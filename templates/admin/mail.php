@@ -1,5 +1,6 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 
 /**
  * The mail-setup wizard: SMTP settings, a test send, and the SPF/DKIM/DMARC
@@ -53,7 +54,7 @@ $renderCheck = static function (array $check) use ($report): void {
                 <span class="osf-copy">
                     <code><?= h((string) $check['recommended']) ?></code>
                     <button type="button" class="secondary outline"
-                            data-copy="<?= h((string) $check['recommended']) ?>">Copy</button>
+                            data-copy="<?= h((string) $check['recommended']) ?>"><?= icon('copy') ?> Copy</button>
                 </span>
             <?php else: ?>
                 <p><small>Record to look for: <code><?= h((string) $check['name']) ?></code>.</small></p>
