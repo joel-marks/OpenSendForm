@@ -13,9 +13,13 @@
 # Runtime data — ignore contents, keep the directory skeleton
 /var/*
 !/var/.gitkeep
+!/var/.htaccess
 !/var/data
 /var/data/*
 !/var/data/.gitkeep
+
+# Build output
+/dist/
 
 # PHPUnit cache
 /.phpunit.cache
