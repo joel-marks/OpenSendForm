@@ -233,6 +233,14 @@ final class AdminController
         $mailEnabled = self::config($c)->mailEnabled();
         $mailNudgeDismissed = self::session($c)->get(self::SESSION_MAIL_NUDGE_DISMISSED) === true;
 
+        // Cheap schema-staleness check: a directory listing plus one SELECT, no
+        // schema changes. Never auto-migrates — just tells the admin to run
+        // `bin/osf migrate` when code shipped a migration this database hasn't
+        // seen yet (the only way to apply one on an already-installed instance).
+        $db = $c->get(\OpenSendForm\Storage\Database::class);
+        $paths = $c->get(\OpenSendForm\Install\Paths::class);
+        $pendingMigrations = (new \OpenSendForm\Storage\MigrationRunner($db, $paths->migrationsPath))->pendingCount();
+
         return AdminView::renderPage($c, $response, 'dashboard', [
             'title'        => 'Dashboard',
             'totpEnabled'  => $totpEnabled,
@@ -241,6 +249,7 @@ final class AdminController
             // Mirror the 2FA nudge for email: shown while sending is off and the
             // admin has not dismissed it this session.
             'showMailNudge' => !$mailEnabled && !$mailNudgeDismissed,
+            'pendingMigrations' => $pendingMigrations,
             'activeForms'  => $forms->countActive(),
             'todayCount'   => $submissions->countSince($todayStart),
             'failedCount'  => $submissions->countByStatus('failed'),
