@@ -23,10 +23,10 @@ use function OpenSendForm\Admin\icon;
 </div>
 
 <?php /* Hidden until JS reveals it; without JS the continue link just works. */ ?>
-<p data-recovery-gate hidden>
+<div class="osf-field" data-recovery-gate hidden>
     <label>
         <input type="checkbox"> I have saved these recovery codes.
     </label>
-</p>
+</div>
 
 <p><a href="/admin" data-recovery-continue>Continue to dashboard</a></p>

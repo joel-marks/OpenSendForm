@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (fix/5d-polish, Claude Code)
+Last updated: 2026-08-27 (fix/5d-polish-v3, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -14,16 +14,20 @@ main — see the condensed sections below and HISTORY.md for full detail.
 Increment 5d (design-system overhaul: Pico.css retired, token contract +
 bespoke `admin.css`, top-nav header, Dark/Light/Auto theme, vendored Lucide
 icons, responsive card-collapse tables) merged to main via PR #21.
-fix/5d-polish (not yet merged) is two rounds of architect-directed polish on
-top of it: a first pass (exact GitHub palette, header/tab-nav split, a
-spacing token scale, button/badge/input consistency), then a second,
-LIVE-VERIFIED pass ("5d polish v2") that re-corrected the dark palette
-against github.com's actual computed styles, reshaped the header into two
-same-surface rows with one hairline, added an orange active-tab token, swapped
-the standalone logout button for a `<details>` account dropdown, and further
-tightened spacing/control/banner consistency — see "Design system" below.
-Suite green (447 tests). CI runs tests + a package build/verify on every
-PR/push.
+fix/5d-polish (merged to main via PR #24) was two rounds of architect-directed
+polish: a first pass (exact GitHub palette, header/tab-nav split, a spacing
+token scale, button/badge/input consistency), then a second, LIVE-VERIFIED
+pass ("5d polish v2") that re-corrected the dark palette against github.com's
+actual computed styles, reshaped the header into two same-surface rows with
+one hairline, added an orange active-tab token, swapped the standalone logout
+button for a `<details>` account dropdown, and tightened spacing/control/
+banner consistency. fix/5d-polish-v3 (this sprint, not yet merged) is a third
+polish round: the header's two rows now sit on DIFFERENT surfaces (GitHub
+alignment, not "same surface" as v2 had it), tabs gained icons, the Admins
+Deactivate/Reactivate buttons became a toggle switch, Forms row buttons are
+equal-width, and every remaining template was converted to the `.osf-field`
+wrapper pattern — see "Design system" below. Suite green (455 tests). CI runs
+tests + a package build/verify on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -73,25 +77,55 @@ authenticated SMTP to the site owner.
   (exempt: tokens.css, vendor/qrcode.js; embed/osf.js out of scope) — this is
   why the account-menu dropdown shadow is a token (`--osf-shadow-dropdown`)
   rather than an inline `rgba()`.
-- Spacing scale: `--osf-space-1`..`--osf-space-6` (4/8/12/16/24/32px),
-  applied systematically across `admin.css` and templates in place of ad-hoc
-  values. `.osf-field` (label+input+hint wrapper, space-4 gap) keeps runs of
-  fields evenly spaced on the Account page and the Admins "Add an admin"
-  form. `.osf-toolbar` + `.osf-filter-bar` give the Submissions filter row a
-  compact inline layout (status/form/Filter, space-2 gap) with "Retry all
-  due now" clearly separated alongside it, both wrapping gracefully.
-- `admin.css` rewritten bespoke (Pico removed): element defaults + the used
-  component set, tokens only. Chrome is a COMPACT, TWO-ROW header, both rows
-  on `--osf-bg-raised` with NO divider between them — a single hairline
-  border sits under the second row only. Row 1 (`.osf-header`): brand left;
-  right-aligned Docs link, theme toggle, account dropdown. Row 2
-  (`.osf-tabnav`/`.osf-tab-link`): GitHub-UnderlineNav-style tabs for the
-  five destinations (Dashboard/Forms/Submissions/Email/Admins), tighter
-  padding than row 1 for GitHub-like density; active tab = `--osf-text` on a
-  2px `--osf-tab-active` underline, inactive = `--osf-text-muted`, hover
-  underline = `--osf-border`. NO sidebar/tree/search/breadcrumbs. "Account"
-  is not a nav item — it's a menu entry (see below). Both rows wrap on
-  narrow viewports.
+- **Spacing / `.osf-field` (STANDARD PATTERN, fix/5d-polish-v3):**
+  `--osf-space-1`..`--osf-space-6` (4/8/12/16/24/32px) applied systematically
+  across `admin.css` and templates. `.osf-field` is the single wrapper for
+  "label + control + optional hint/error": `margin-bottom: space-4` between
+  fields (`:last-child` zeroes it so a section's own bottom padding — `section`
+  is `space-5` all round — provides the boundary gap instead of stacking);
+  `.osf-field label { margin-top: 0 }` overrides the global label's
+  `space-4` top margin so field rhythm is controlled by the wrapper, not the
+  label. Inputs/selects/textareas share one rule: `space-2` vertical /
+  `space-3` horizontal padding. **Every admin + installer template with a
+  visible form control now uses this wrapper** — login, totp, totp_setup
+  (all three branches), recovery_codes (the JS-revealed ack checkbox),
+  account, admins (add-admin form), admin_delete_confirm, form_edit (every
+  field, including checkboxes-in-fieldsets and the Turnstile pair), mail
+  (SMTP settings, test-send, DKIM re-check row), submissions' filter-bar
+  selects (`.osf-filter-bar .osf-field { margin: 0 }` neutralises the
+  wrapper's vertical rhythm inside that horizontal bar), and every
+  templates/install/ step (welcome has no controls; admin, database,
+  finish do). `DesignSystemTest`/`AdminUiTest`/`AccountAdminsHttpTest`/
+  `InstallerHttpTest` each carry a DOM-based regression check
+  (`Tests\Support\AdminUiFieldWrapperAssertions`) that renders every screen
+  and asserts every visible `<input>`/`<select>`/`<textarea>` (hidden inputs
+  and the CSRF field exempt) has an `.osf-field` ancestor — no orphan
+  controls can be reintroduced silently. `.osf-toolbar` + `.osf-filter-bar`
+  still give the Submissions filter row its compact inline layout
+  (status/form/Filter, space-2 gap) with "Retry all due now" separated
+  alongside it. A `.osf-section-top` utility (`margin-top: space-6`) fixes
+  sections that follow non-section content (e.g. a table) with no natural
+  gap of their own — currently only the Admins "Add an admin" section.
+- **Header surfaces (GitHub alignment, fix/5d-polish-v3 — supersedes v2's
+  "same surface" reading):** `admin.css` rewritten bespoke (Pico removed):
+  element defaults + the used component set, tokens only. Chrome is a
+  COMPACT, TWO-ROW header on TWO DIFFERENT surfaces with NO divider between
+  them. Row 1 (`.osf-header`, `--osf-bg-inset` — the near-black, live-verified
+  against github.com's own header): brand left; right-aligned Docs link,
+  theme toggle, account dropdown. Row 2 (`.osf-tabnav`/`.osf-tab-link`,
+  `--osf-bg` — the page background, distinct from row 1): GitHub-UnderlineNav-
+  style tabs for the five destinations (Dashboard/Forms/Submissions/Email/
+  Admins), each preceded by its Lucide icon (`layout-dashboard`/`file-text`/
+  `inbox`/`mail`/`users`) at text size via `.osf-icon`'s `width:1em;
+  height:1em`, `currentColor`-driven so icon + label share the same
+  active/inactive/hover colour with no extra CSS; a single hairline
+  `--osf-border` sits under this row only — the one divider in the two-row
+  header. Active tab = `--osf-text` on a 2px `--osf-tab-active` underline,
+  inactive = `--osf-text-muted`, hover underline = `--osf-border`. Neither
+  bar is width-constrained — `.osf-header`/`.osf-tabnav` span the full
+  viewport; only their `-inner container` children align to the content
+  column. NO sidebar/tree/search/breadcrumbs. "Account" is not a nav item —
+  it's a menu entry (see below). Both rows wrap on narrow viewports.
 - **Account menu**: the admin name is a `<details class="osf-account-menu">
   <summary>` dropdown trigger (native, no JS, CSP-safe — GitHub's own
   pattern) with a vendored `chevron-down` Lucide icon (rotates on `[open]`
@@ -104,29 +138,49 @@ authenticated SMTP to the site owner.
 - One shared button rule (`inline-flex`, centred icon+label, fixed gap,
   uniform space-2/space-4 padding); a `.osf-btn-sm` small variant
   (space-1/space-3, 0.85rem) is applied to every action button inside a
-  table row (Edit, Disable/Enable, Delete, Reactivate, Deactivate, Retry) so
-  same-context row actions match in height/width. `.osf-copy` (Copy/
-  Re-check) keeps its own, already-smaller compact tier — a deliberately
-  distinct utility size, not folded into `.osf-btn-sm`. Badges (one
-  `.osf-badge` size) and inputs (one shared rule) remain consistent.
-  Dismissible banners (`.osf-nudge`) never wrap: the message grows
-  (`flex: 1 1 auto`) and the dismiss control (`flex: none`, icon-only
+  table row (Edit, Disable/Enable, Delete, Retry) so same-context row
+  actions match in height. A `.osf-btn-equal` add-on (`min-width: 5.5rem;
+  justify-content: center`) is applied to Forms-list Edit + Disable/Enable
+  so differing label lengths don't stagger that column across rows.
+  `.osf-copy` (Copy/Re-check) keeps its own, already-smaller compact tier —
+  a deliberately distinct utility size, not folded into `.osf-btn-sm`.
+  Badges (one `.osf-badge` size) and inputs (one shared rule) remain
+  consistent. Dismissible banners (`.osf-nudge`) never wrap: the message
+  grows (`flex: 1 1 auto`) and the dismiss control (`flex: none`, icon-only
   `x` glyph, `.osf-btn-sm`) stays pinned on the same row.
+- **Admins status switch (fix/5d-polish-v3 — replaces the Deactivate/
+  Reactivate buttons):** the Admins-page Status column is now a `.osf-switch`
+  track+thumb control — a plain CSRF POST `<button type="submit">` (no JS
+  required), `role="switch"` + `aria-pressed` + an `aria-label` naming the
+  action ("Deactivate x@example.com" / "Reactivate x@example.com"),
+  success-toned (`--osf-success`) when active, muted (`--osf-text-subtle`
+  track) when inactive. Where the action is refused server-side (the last
+  active admin, including self-as-last), the switch renders as a disabled
+  `<button type="button">` (no form, no action URL in the markup) with a
+  `title` explaining why. The Actions column now holds ONLY Delete (or an
+  em-dash placeholder) — the guard logic (`$canDeactivate`/`$canDelete` in
+  admins.php) and the underlying endpoints/guards are unchanged, only the
+  buttons' presentation moved.
 - Theme: default dark; toggle cycles Dark/Light/Auto; persisted in
   localStorage `osf-theme`. `public/assets/theme-init.js` (external, first in
   `<head>`, blocking) sets `data-theme` (resolved) + `data-theme-mode` (choice)
   pre-paint → no flash. Toggle UI logic in the deferred admin.js. Icons from a
   vendored Lucide subset (ISC) `src/Admin/icons.php` (helper `icon()`, loaded
   by TemplateRenderer), currentColor-driven — fixes the old invisible-in-light
-  toggle glyph.
+  toggle glyph. fix/5d-polish-v3 added the five tab icons (`layout-dashboard`,
+  `file-text`, `inbox`, `mail`, `users`) to the vendored set.
 - Responsive tables collapse to label+value cards under 640px via `data-label`
   cells (no horizontal scroll); submission/dashboard last-error cells are
   no-JS `<details>` expanders. Installer shares the design system (same
   tokens/CSS/theme-init, header restructured to the same brand/actions shape,
   no tab bar, no account menu). Housekeeping: zip PHP ext added to the
-  devcontainer Dockerfile (next rebuild). SCOPE FENCE: embed osf.js + public
-  API untouched; the logout control's only behavioural change is its new
-  location (inside the account menu), same CSRF POST.
+  devcontainer Dockerfile (next rebuild). SCOPE FENCE (fix/5d-polish v1/v2):
+  embed osf.js + public API untouched; the logout control's only
+  behavioural change is its new location (inside the account menu), same
+  CSRF POST. SCOPE FENCE (fix/5d-polish-v3): admin + installer
+  templates/CSS only; embed untouched; the only behavioural change is the
+  Admins Deactivate/Reactivate buttons' presentation becoming the status
+  switch — same endpoints, same guards.
 
 ## Admin deletion (fix/admin-delete) — condensed; see HISTORY
 - Admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared

@@ -96,17 +96,19 @@ $renderCheck = static function (array $check) use ($report): void {
     <form method="post" action="/admin/mail">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
 
-        <label for="smtp_host">SMTP host</label>
-        <input type="text" id="smtp_host" name="smtp_host" value="<?= h($smtpHost) ?>"
-               placeholder="mail.yourdomain.com" autocomplete="off">
+        <div class="osf-field">
+            <label for="smtp_host">SMTP host</label>
+            <input type="text" id="smtp_host" name="smtp_host" value="<?= h($smtpHost) ?>"
+                   placeholder="mail.yourdomain.com" autocomplete="off">
+        </div>
 
         <div class="grid">
-            <div>
+            <div class="osf-field">
                 <label for="smtp_port">Port</label>
                 <input type="text" id="smtp_port" name="smtp_port" value="<?= h($smtpPort) ?>"
                        placeholder="587" inputmode="numeric" autocomplete="off">
             </div>
-            <div>
+            <div class="osf-field">
                 <label for="smtp_encryption">Encryption</label>
                 <select id="smtp_encryption" name="smtp_encryption">
                     <option value="starttls" <?= $smtpEncryption === 'starttls' ? 'selected' : '' ?>>
@@ -122,34 +124,44 @@ $renderCheck = static function (array $check) use ($report): void {
             </div>
         </div>
 
-        <label for="smtp_user">Username</label>
-        <input type="text" id="smtp_user" name="smtp_user" value="<?= h($smtpUser) ?>"
-               placeholder="you@yourdomain.com" autocomplete="off">
+        <div class="osf-field">
+            <label for="smtp_user">Username</label>
+            <input type="text" id="smtp_user" name="smtp_user" value="<?= h($smtpUser) ?>"
+                   placeholder="you@yourdomain.com" autocomplete="off">
+        </div>
 
-        <label for="smtp_pass">Password</label>
-        <input type="password" id="smtp_pass" name="smtp_pass" autocomplete="new-password"
-               placeholder="<?= $passwordSet ? '••••••••  (leave blank to keep the saved password)' : '' ?>">
-        <small><?= $passwordSet
-            ? 'A password is saved. Leave this blank to keep it, or type a new one to replace it.'
-            : 'No password saved yet. Leave blank if your server sends without a login.' ?></small>
+        <div class="osf-field">
+            <label for="smtp_pass">Password</label>
+            <input type="password" id="smtp_pass" name="smtp_pass" autocomplete="new-password"
+                   placeholder="<?= $passwordSet ? '••••••••  (leave blank to keep the saved password)' : '' ?>">
+            <small><?= $passwordSet
+                ? 'A password is saved. Leave this blank to keep it, or type a new one to replace it.'
+                : 'No password saved yet. Leave blank if your server sends without a login.' ?></small>
+        </div>
 
         <hr>
 
-        <label for="mail_from_address">From address</label>
-        <input type="email" id="mail_from_address" name="mail_from_address"
-               value="<?= h($fromAddress) ?>" placeholder="hello@yourdomain.com" autocomplete="off">
-        <small>What recipients see the email came from. Use an address at your own
-            domain so the DNS records below can vouch for it.</small>
+        <div class="osf-field">
+            <label for="mail_from_address">From address</label>
+            <input type="email" id="mail_from_address" name="mail_from_address"
+                   value="<?= h($fromAddress) ?>" placeholder="hello@yourdomain.com" autocomplete="off">
+            <small>What recipients see the email came from. Use an address at your own
+                domain so the DNS records below can vouch for it.</small>
+        </div>
 
-        <label for="mail_from_name">From name</label>
-        <input type="text" id="mail_from_name" name="mail_from_name"
-               value="<?= h($fromName) ?>" placeholder="Your Website" autocomplete="off">
+        <div class="osf-field">
+            <label for="mail_from_name">From name</label>
+            <input type="text" id="mail_from_name" name="mail_from_name"
+                   value="<?= h($fromName) ?>" placeholder="Your Website" autocomplete="off">
+        </div>
 
-        <label>
-            <input type="checkbox" name="mail_enabled" value="1" <?= $mailEnabled ? 'checked' : '' ?>>
-            Send emails for new submissions
-        </label>
-        <small>When off, submissions are still saved — they just aren’t emailed.</small>
+        <div class="osf-field">
+            <label>
+                <input type="checkbox" name="mail_enabled" value="1" <?= $mailEnabled ? 'checked' : '' ?>>
+                Send emails for new submissions
+            </label>
+            <small>When off, submissions are still saved — they just aren’t emailed.</small>
+        </div>
 
         <button type="submit">Save email settings</button>
     </form>
@@ -164,9 +176,11 @@ $renderCheck = static function (array $check) use ($report): void {
 
     <form method="post" action="/admin/mail/test">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <label for="test_recipient">Send test to</label>
-        <input type="email" id="test_recipient" name="test_recipient"
-               value="<?= h($testRecipient) ?>" placeholder="you@example.com" autocomplete="off">
+        <div class="osf-field">
+            <label for="test_recipient">Send test to</label>
+            <input type="email" id="test_recipient" name="test_recipient"
+                   value="<?= h($testRecipient) ?>" placeholder="you@example.com" autocomplete="off">
+        </div>
         <button type="submit" class="secondary">Send test email</button>
     </form>
 
@@ -200,14 +214,16 @@ $renderCheck = static function (array $check) use ($report): void {
 
         <?php $renderCheck($report['dkim']); ?>
         <form method="get" action="/admin/mail">
-            <label for="dkim_selector">DKIM selector to check</label>
-            <div class="grid">
-                <input type="text" id="dkim_selector" name="dkim_selector"
-                       value="<?= h($selector) ?>" placeholder="default" autocomplete="off">
-                <button type="submit" class="secondary outline">Re-check</button>
+            <div class="osf-field">
+                <label for="dkim_selector">DKIM selector to check</label>
+                <div class="grid">
+                    <input type="text" id="dkim_selector" name="dkim_selector"
+                           value="<?= h($selector) ?>" placeholder="default" autocomplete="off">
+                    <button type="submit" class="secondary outline">Re-check</button>
+                </div>
+                <small>Most hosts use <code>default</code>. Your provider’s email
+                    settings tell you the selector if it differs.</small>
             </div>
-            <small>Most hosts use <code>default</code>. Your provider’s email
-                settings tell you the selector if it differs.</small>
         </form>
 
         <?php $renderCheck($report['dmarc']); ?>

@@ -12,6 +12,7 @@ use OpenSendForm\Auth\Totp;
 use OpenSendForm\Config;
 use OpenSendForm\Storage\Database;
 use OpenSendForm\Storage\MigrationRunner;
+use OpenSendForm\Tests\Support\AdminUiFieldWrapperAssertions;
 use OpenSendForm\Tests\Support\FakeSession;
 use OpenSendForm\Tests\Support\FixedClock;
 use PHPUnit\Framework\TestCase;
@@ -242,9 +243,11 @@ final class AccountAdminsHttpTest extends TestCase
         self::assertStringContainsString('second@example.com', $body);
         self::assertStringContainsString('Second Admin', $body);
         self::assertStringContainsString('The Boss', $body);
-        // 2FA off badge and active badge present.
+        // 2FA off badge present; Status is a switch, not a badge (both admins
+        // are active, so an "on" switch is shown for each).
         self::assertStringContainsString('osf-badge--muted', $body);
-        self::assertStringContainsString('osf-badge--ok', $body);
+        self::assertSame(2, substr_count($body, 'class="osf-switch"'));
+        self::assertSame(2, substr_count($body, 'aria-pressed="true"'));
         // Last login shows "never" for the second (never signed in) admin.
         self::assertStringContainsString('never', $body);
     }
@@ -323,10 +326,14 @@ final class AccountAdminsHttpTest extends TestCase
     {
         $admin = $this->createAndLogin('boss@example.com', 'The Boss');
 
-        // Button is hidden in the UI…
+        // Switch is disabled in the UI, with a title explaining why…
         $body = (string) $this->get('/admin/admins')->getBody();
         self::assertStringNotContainsString('/admin/admins/' . $admin['id'] . '/deactivate', $body);
         self::assertStringContainsString('last active admin', $body);
+        self::assertMatchesRegularExpression(
+            '/<button type="button" class="osf-switch" role="switch" aria-pressed="true" disabled\s+title="The last active admin cannot be deactivated\."/',
+            $body
+        );
 
         // …and the action is refused server-side even if forced.
         $csrf = $this->csrfFrom($this->get('/admin/admins'));
@@ -624,6 +631,51 @@ final class AccountAdminsHttpTest extends TestCase
         $body = (string) $this->get('/admin/totp/setup')->getBody();
         // Same segmented enhancement hook as the login screen.
         self::assertStringContainsString('data-totp-code', $body);
+    }
+
+    // --- Field-spacing audit: no orphan controls ---------------------------
+
+    public function testTotpAndDeleteScreensWrapControlsInTheFieldPattern(): void
+    {
+        // Pending TOTP login screen.
+        [$admin, $secret] = $this->pendingTotp();
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $this->get('/admin/totp')->getBody(),
+            'totp (pending login)'
+        );
+        $this->post('/admin/totp', ['_csrf' => $this->csrfFrom($this->get('/admin/totp')), 'code' => $this->totp->codeAt($secret, self::T0)]);
+
+        // TOTP setup, "enabled" branch (regenerate + disable forms).
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $this->get('/admin/totp/setup')->getBody(),
+            'totp setup (enabled)'
+        );
+
+        // Recovery codes display screen (regenerate response body).
+        $regenerate = $this->post('/admin/totp/recovery-codes/regenerate', [
+            '_csrf' => $this->csrfFrom($this->get('/admin/totp/setup')),
+            'code'  => $this->totp->codeAt($secret, self::T0),
+        ]);
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $regenerate->getBody(),
+            'recovery codes'
+        );
+
+        // Admin delete confirmation screen.
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $this->get('/admin/admins/' . $second['id'] . '/delete')->getBody(),
+            'admin delete confirm'
+        );
+    }
+
+    public function testTotpSetupDisabledBranchWrapsControlsInTheFieldPattern(): void
+    {
+        $this->createAndLogin('boss@example.com', 'The Boss');
+        AdminUiFieldWrapperAssertions::assertNoOrphanControls(
+            (string) $this->get('/admin/totp/setup')->getBody(),
+            'totp setup (disabled)'
+        );
     }
 
     // --- Helpers ----------------------------------------------------------

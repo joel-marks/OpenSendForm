@@ -1330,3 +1330,125 @@
   public API untouched; no new Composer dependencies; no behavioural
   changes beyond the logout control's relocation into the account menu
   (still the same CSRF POST). Nothing logged to QUESTIONS.md.
+
+## 2026-08-27 — fix/5d-polish-v3: header surfaces, tab icons, admin status
+  toggle, button sizing, systematic field-spacing audit
+- Branch: fix/5d-polish-v3, off latest main (which already had fix/5d-polish
+  v1+v2 merged via PR #24). Third architect-directed polish round on the
+  design system (side-by-side review round 3). No new Composer deps.
+  Vendored assets: five Lucide glyphs (`layout-dashboard`, `file-text`,
+  `inbox`, `mail`, `users`) added to `src/Admin/icons.php`'s `icon_paths()`
+  (ISC licence note maintained, unchanged).
+- **Header surfaces (GitHub alignment).** `.osf-header` (top row: brand,
+  Docs, theme toggle, account menu) moved from `--osf-bg-raised` to
+  `--osf-bg-inset` (the near-black); `.osf-tabnav` (tab row) moved from
+  `--osf-bg-raised` to `--osf-bg` (the page background) — the two rows now
+  sit on visibly DIFFERENT surfaces, correcting v2's "same surface, one
+  hairline" read of the architect's brief. No divider was added between the
+  rows (unchanged); the hairline stays under the tab row only. Both bars
+  were already full-width with only their `-inner container` children
+  column-aligned, so no structural change was needed there — confirmed by
+  a new `DesignSystemTest::testHeaderAndTabBarSpanTheViewportWithColumnAlignedContent`.
+- **Tab icons.** Each of the five tabs (`_nav.php`'s `$tab()` closure)
+  gained a fourth `$iconName` argument rendered before the label via the
+  existing `icon()` helper; `.osf-tab-link` gained `gap: space-1` for the
+  icon/label spacing. No colour CSS was needed for active/inactive/hover —
+  the SVGs already use `stroke="currentColor"` and `.osf-icon` sizes to
+  `1em`, so they inherit the tab link's existing text colour and size
+  automatically.
+- **Admins status toggle (replaces Deactivate/Reactivate buttons).** New
+  `.osf-switch` CSS component: a `<button>`-as-track with a `::before`
+  thumb, `--osf-text-subtle` track when inactive, `--osf-success` track +
+  translated thumb when `[aria-pressed="true"]`, `:disabled` dims to 0.5
+  opacity. `admins.php`'s Status column now renders this switch inside the
+  existing CSRF POST `<form action=".../deactivate|reactivate">` (same
+  endpoints, same server-side guards, unchanged) with `role="switch"`,
+  `aria-pressed`, and an `aria-label` naming the action (e.g. "Deactivate
+  x@example.com"). Where deactivation isn't permitted (the last active
+  admin, including self-as-last), the switch is a disabled `<button
+  type="button">` with NO form/action URL and a `title` explaining why —
+  works without JS either way (plain submit, or nothing to submit when
+  disabled). The Actions column now holds only Delete (or an em-dash when
+  neither is available); the old "last active admin" badge is gone,
+  replaced by the disabled switch's title. `admin_delete_confirm.php`'s
+  "use Deactivate instead" copy reworded to "use the status toggle".
+- **Equal-width buttons.** New `.osf-btn-equal` utility (`min-width:
+  5.5rem; justify-content: center`) applied to Forms-list Edit +
+  Disable/Enable so "Edit" and "Disable"/"Enable" render the same width
+  across every row (previously ragged because the labels differ in
+  length). Not applied to Admins row actions — after the switch change
+  that column holds at most one button (Delete), so there is no pair left
+  to align there; the architect's "e.g. admins row actions" framing in the
+  brief predates the switch decision in the same review round.
+- **Add-an-admin section spacing.** New `.osf-section-top` utility
+  (`margin-top: space-6`) applied to the Admins page's "Add an admin"
+  `<section>`, which previously sat flush against the admins table above
+  it (the table wrapper carries no bottom margin of its own).
+- **Systematic field-spacing audit.** The `.osf-field` wrapper (label +
+  control + optional hint/error; `space-4` between fields via
+  `margin-bottom`, `:last-child` zeroed since the enclosing `section`'s own
+  `space-5` padding provides the boundary gap; `label { margin-top: 0 }`
+  inside the wrapper) already existed from v1/v2 for account.php and the
+  admins add-form. This sprint converted every remaining template to it:
+  login (`<p><label><br><input></p>` → `.osf-field`), totp, totp_setup (all
+  three branches: regenerate, disable, initial setup), recovery_codes (the
+  JS-revealed "I have saved these" checkbox gate), admin_delete_confirm
+  (current-password field), form_edit (every field — the biggest
+  conversion: `<label for=X>Text<input></label>` nested pattern rewritten
+  to the sibling `<div class="osf-field"><label><input></div>` pattern used
+  everywhere else, including the three checkboxes-in-fieldsets and the
+  Turnstile sitekey/secret pair), mail.php (SMTP settings including the
+  port/encryption `.grid` pair, test-send, the DKIM-selector `.grid` +
+  re-check row), submissions.php's filter-bar selects (wrapped in
+  `.osf-field` for the audit rule, but `.osf-filter-bar .osf-field {
+  margin: 0 }` neutralises the wrapper's vertical rhythm since the bar's
+  own flex gap already handles horizontal spacing), and every
+  templates/install/ step with controls (admin, database — including the
+  db-driver radio fieldset and the always-rendered MySQL-details fields;
+  welcome/done/finish have no visible controls to wrap). Dashboard and
+  forms_list carry no visible controls beyond hidden CSRF inputs, so
+  neither needed conversion. Verified `admin.js`'s `buildBoxes()` (segmented
+  TOTP boxes) and its recovery-code-toggle button still work unmodified —
+  both operate on `input.parentNode` and a `querySelector('label')` inside
+  it, neither of which cares whether that parent is a `<p>` or a
+  `.osf-field` div.
+- **New regression test:** `Tests\Support\AdminUiFieldWrapperAssertions`
+  (shared DOM/XPath helper, not a TestCase) parses a page's rendered HTML
+  and asserts every `<input>`/`<select>`/`<textarea>` (hidden inputs and
+  the `_csrf` field exempt) has an `.osf-field`-classed ancestor. Wired into
+  four HTTP test suites so it runs against real rendered output, not
+  template source: `AdminUiTest::testEveryAdminScreenWrapsControlsInTheFieldPattern`
+  (login, dashboard, forms list/create/edit, submissions, mail, account,
+  admins), `AccountAdminsHttpTest::testTotpAndDeleteScreensWrapControlsInTheFieldPattern`
+  + `testTotpSetupDisabledBranchWrapsControlsInTheFieldPattern` (totp
+  pending-login, totp/setup both branches, recovery-codes, admin-delete
+  confirm), and `InstallerHttpTest::testEveryInstallStepWrapsControlsInTheFieldPattern`
+  (welcome, database, admin).
+- Other test updates: `DesignSystemTest`'s header-surface test rewritten
+  (`testHeaderIsTwoRowsOnGithubAlignedSurfacesWithOneHairlineUnderTheSecond`,
+  replacing the v2 "same surface" version) plus new tests for the tab-icon
+  wiring, the switch component + disabled-state CSS, the equal-width button
+  CSS, and the add-admin spacing class; the five new icon names added to
+  `testIconHelperRendersValidInlineSvg`'s coverage list.
+  `AdminUiTest::testTopNavRendersWithActiveLinkAndDocsLink`'s Dashboard-tab
+  regex updated to expect the icon SVG before the label, plus a new
+  per-tab-icon assertion loop. `AccountAdminsHttpTest::testAdminsListShowsColumnsAndBadges`
+  and `testLastActiveAdminCannotBeDeactivatedServerSide` updated for the
+  switch markup (no more `osf-badge--ok`-as-status-badge assertion). No-
+  hardcoded-colours grep still passes (the switch/equal-width/section-top
+  CSS is 100% token-driven). Full suite green: 455 tests, 3026 assertions
+  (was 447/2892).
+- Manually verified against the running dev server + a headless Chromium
+  (Playwright) screenshot pass in both dark and light theme: the header's
+  two visibly-distinct surfaces with the tab icons, the admins-page switch
+  (green/right for active, muted/left for a pre-existing deactivated admin)
+  with the add-admin section's top gap, and the forms-page Edit/Disable
+  buttons rendering at identical width. Login used a throwaway `bin/osf
+  admin:create` admin in the gitignored `var/` sqlite DB, deleted again
+  after the check; confirmed via `git status` that nothing under `var/` is
+  tracked.
+- Scope fence honoured: admin + installer templates/CSS only; embed
+  untouched; no behavioural change beyond the Deactivate/Reactivate
+  buttons' presentation becoming the status switch (same endpoints, same
+  guards). Nothing logged to QUESTIONS.md — no architecture/security/scope
+  blockers this sprint.

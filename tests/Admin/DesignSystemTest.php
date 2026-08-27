@@ -152,6 +152,7 @@ final class DesignSystemTest extends TestCase
             'sun', 'moon', 'monitor', 'copy', 'download', 'trash-2', 'pencil',
             'check', 'x', 'alert-triangle', 'info', 'book-open', 'log-out',
             'eye', 'eye-off', 'chevron-down',
+            'layout-dashboard', 'file-text', 'inbox', 'mail', 'users',
         ];
 
         foreach ($required as $name) {
@@ -207,6 +208,21 @@ final class DesignSystemTest extends TestCase
         self::assertStringContainsString("icon('moon'", $nav);
         self::assertStringContainsString("icon('monitor'", $nav);
 
+        // Each of the five tabs is built with its own Lucide icon argument.
+        foreach ([
+            'dashboard'   => 'layout-dashboard',
+            'forms'       => 'file-text',
+            'submissions' => 'inbox',
+            'mail'        => 'mail',
+            'admins'      => 'users',
+        ] as $key => $iconName) {
+            self::assertMatchesRegularExpression(
+                "/\\\$tab\\('{$key}', '[^']*', '[^']*', '{$iconName}'\\)/",
+                $nav,
+                "Tab '{$key}' is not wired to the '{$iconName}' icon"
+            );
+        }
+
         // No docs-style furniture anywhere in the admin templates.
         foreach (array_merge(
             glob(self::root() . '/templates/admin/*.php'),
@@ -219,15 +235,17 @@ final class DesignSystemTest extends TestCase
         }
     }
 
-    // --- Header: two rows, one surface, one hairline under the second -----
+    // --- Header: two rows, GitHub-aligned surfaces, one hairline under the
+    // second (fix/5d-polish-v3, architect round 3) ------------------------
 
-    public function testHeaderIsTwoRowsOnTheSameSurfaceWithOneHairlineUnderTheSecond(): void
+    public function testHeaderIsTwoRowsOnGithubAlignedSurfacesWithOneHairlineUnderTheSecond(): void
     {
         $css = self::read('public/assets/admin.css');
 
         self::assertMatchesRegularExpression('/\.osf-header\s*\{([^}]*)\}/s', $css, '.osf-header rule not found');
         preg_match('/\.osf-header\s*\{([^}]*)\}/s', $css, $headerBlock);
-        self::assertStringContainsString('--osf-bg-raised', $headerBlock[1]);
+        // Top row: near-black --osf-bg-inset, matching github.com's header.
+        self::assertStringContainsString('--osf-bg-inset', $headerBlock[1]);
         self::assertStringNotContainsString(
             'border-bottom',
             $headerBlock[1],
@@ -236,12 +254,30 @@ final class DesignSystemTest extends TestCase
 
         self::assertMatchesRegularExpression('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, '.osf-tabnav rule not found');
         preg_match('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, $tabnavBlock);
-        self::assertStringContainsString('--osf-bg-raised', $tabnavBlock[1]);
+        // Tab row: page background --osf-bg, distinct from the top row.
+        self::assertStringContainsString('--osf-bg', $tabnavBlock[1]);
+        self::assertStringNotContainsString('--osf-bg-raised', $tabnavBlock[1]);
+        self::assertStringNotContainsString('--osf-bg-inset', $tabnavBlock[1]);
         self::assertStringContainsString(
             'border-bottom',
             $tabnavBlock[1],
             'The single hairline sits under the second (tab) row'
         );
+    }
+
+    // --- Header/tab bar: full-width surfaces, content aligned to the column
+
+    public function testHeaderAndTabBarSpanTheViewportWithColumnAlignedContent(): void
+    {
+        $css = self::read('public/assets/admin.css');
+        $nav = self::read('templates/admin/_nav.php');
+
+        // The bars themselves (.osf-header/.osf-tabnav) carry no max-width —
+        // only their "-inner container" children are column-constrained.
+        self::assertDoesNotMatchRegularExpression('/\.osf-header\s*\{[^}]*max-width/s', $css);
+        self::assertDoesNotMatchRegularExpression('/\.osf-tabnav\s*\{[^}]*max-width/s', $css);
+        self::assertStringContainsString('osf-header-inner container', $nav);
+        self::assertStringContainsString('osf-tabnav-inner container', $nav);
     }
 
     // --- Tab bar: architect-supplied active-tab orange ---------------------
@@ -316,5 +352,61 @@ final class DesignSystemTest extends TestCase
             self::assertStringContainsString('<details class="osf-error-detail">', $html, "{$tpl} error cell is not expandable");
             self::assertStringContainsString('<summary>', $html);
         }
+    }
+
+    // --- Admins: status toggle switch replaces Deactivate/Reactivate ------
+
+    public function testAdminsStatusColumnIsASwitchNotButtons(): void
+    {
+        $html = self::read('templates/admin/admins.php');
+
+        self::assertStringNotContainsString('>Deactivate<', $html);
+        self::assertStringNotContainsString('>Reactivate<', $html);
+        self::assertStringContainsString('class="osf-switch"', $html);
+        self::assertStringContainsString('role="switch"', $html);
+        self::assertStringContainsString('aria-pressed="true"', $html);
+        self::assertStringContainsString('aria-pressed="false"', $html);
+        // Disabled state (last active admin) carries an explanatory title.
+        self::assertStringContainsString('disabled', $html);
+        self::assertStringContainsString('title="The last active admin cannot be deactivated."', $html);
+
+        $css = self::read('public/assets/admin.css');
+        self::assertMatchesRegularExpression('/\.osf-switch\s*\{/', $css);
+        self::assertMatchesRegularExpression('/\.osf-switch\[aria-pressed="true"\]\s*\{[^}]*--osf-success/s', $css);
+    }
+
+    // --- Forms page: equal-width small buttons -----------------------------
+
+    public function testFormsRowActionsAreEqualWidth(): void
+    {
+        $html = self::read('templates/admin/forms_list.php');
+        self::assertMatchesRegularExpression(
+            '/class="secondary osf-btn-sm osf-btn-equal"[^>]*>.*?Edit/s',
+            $html
+        );
+        self::assertMatchesRegularExpression(
+            '/class="<\?= \$active[^"]*osf-btn-sm osf-btn-equal"/s',
+            $html
+        );
+
+        $css = self::read('public/assets/admin.css');
+        self::assertMatchesRegularExpression('/\.osf-btn-equal\s*\{[^}]*min-width/s', $css);
+    }
+
+    // --- Admins: add-admin section spacing ----------------------------------
+
+    public function testAddAdminSectionHasTopSpacing(): void
+    {
+        $html = self::read('templates/admin/admins.php');
+        self::assertMatchesRegularExpression(
+            '/<section class="osf-section-top">\s*<h2>Add an admin<\/h2>/',
+            $html
+        );
+
+        $css = self::read('public/assets/admin.css');
+        self::assertMatchesRegularExpression(
+            '/\.osf-section-top\s*\{[^}]*margin-top:\s*var\(--osf-space-6\)/s',
+            $css
+        );
     }
 }

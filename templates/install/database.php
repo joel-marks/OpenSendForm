@@ -29,16 +29,20 @@ $driver = $driver === 'mysql' ? 'mysql' : 'sqlite';
 
     <fieldset>
         <legend><strong>Database type</strong></legend>
-        <label>
-            <input type="radio" name="db_driver" value="sqlite" data-db-driver
-                   <?= $driver === 'sqlite' ? 'checked' : '' ?>>
-            Built-in database (SQLite) — recommended, nothing to set up.
-        </label>
-        <label>
-            <input type="radio" name="db_driver" value="mysql" data-db-driver
-                   <?= $driver === 'mysql' ? 'checked' : '' ?>>
-            MySQL database — only if your host told you to use one.
-        </label>
+        <div class="osf-field">
+            <label>
+                <input type="radio" name="db_driver" value="sqlite" data-db-driver
+                       <?= $driver === 'sqlite' ? 'checked' : '' ?>>
+                Built-in database (SQLite) — recommended, nothing to set up.
+            </label>
+        </div>
+        <div class="osf-field">
+            <label>
+                <input type="radio" name="db_driver" value="mysql" data-db-driver
+                       <?= $driver === 'mysql' ? 'checked' : '' ?>>
+                MySQL database — only if your host told you to use one.
+            </label>
+        </div>
     </fieldset>
 
     <?php /* Visible by default so it works with JavaScript OFF (the current
@@ -50,22 +54,32 @@ $driver = $driver === 'mysql' ? 'mysql' : 'sqlite';
             database (and its username and password) in cPanel under
             “MySQL® Databases”.</small></p>
 
-        <label for="db_host">Database host</label>
-        <input type="text" id="db_host" name="db_host" value="<?= h($dbHost) ?>"
-               placeholder="localhost" autocomplete="off">
+        <div class="osf-field">
+            <label for="db_host">Database host</label>
+            <input type="text" id="db_host" name="db_host" value="<?= h($dbHost) ?>"
+                   placeholder="localhost" autocomplete="off">
+        </div>
 
-        <label for="db_port">Port</label>
-        <input type="text" id="db_port" name="db_port" value="<?= h($dbPort) ?>"
-               placeholder="3306" inputmode="numeric" autocomplete="off">
+        <div class="osf-field">
+            <label for="db_port">Port</label>
+            <input type="text" id="db_port" name="db_port" value="<?= h($dbPort) ?>"
+                   placeholder="3306" inputmode="numeric" autocomplete="off">
+        </div>
 
-        <label for="db_name">Database name</label>
-        <input type="text" id="db_name" name="db_name" value="<?= h($dbName) ?>" autocomplete="off">
+        <div class="osf-field">
+            <label for="db_name">Database name</label>
+            <input type="text" id="db_name" name="db_name" value="<?= h($dbName) ?>" autocomplete="off">
+        </div>
 
-        <label for="db_user">Database username</label>
-        <input type="text" id="db_user" name="db_user" value="<?= h($dbUser) ?>" autocomplete="off">
+        <div class="osf-field">
+            <label for="db_user">Database username</label>
+            <input type="text" id="db_user" name="db_user" value="<?= h($dbUser) ?>" autocomplete="off">
+        </div>
 
-        <label for="db_pass">Database password</label>
-        <input type="password" id="db_pass" name="db_pass" autocomplete="off">
+        <div class="osf-field">
+            <label for="db_pass">Database password</label>
+            <input type="password" id="db_pass" name="db_pass" autocomplete="off">
+        </div>
     </section>
 
     <button type="submit">Test and continue</button>

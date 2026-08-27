@@ -34,20 +34,24 @@ $return = [
 <div class="osf-toolbar">
     <form method="get" action="/admin/submissions" role="search" class="osf-inline-form">
         <div role="group" aria-label="Filter submissions" class="osf-filter-bar">
-            <select name="status" aria-label="Filter by status">
-                <option value="">All statuses</option>
-                <?php foreach ($statuses as $s): ?>
-                    <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h($s) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <select name="form" aria-label="Filter by form">
-                <option value="">All forms</option>
-                <?php foreach ($forms as $f): ?>
-                    <option value="<?= h((string) $f['id']) ?>" <?= $formId === (int) $f['id'] ? 'selected' : '' ?>>
-                        <?= h((string) $f['name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <div class="osf-field">
+                <select name="status" aria-label="Filter by status">
+                    <option value="">All statuses</option>
+                    <?php foreach ($statuses as $s): ?>
+                        <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h($s) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="osf-field">
+                <select name="form" aria-label="Filter by form">
+                    <option value="">All forms</option>
+                    <?php foreach ($forms as $f): ?>
+                        <option value="<?= h((string) $f['id']) ?>" <?= $formId === (int) $f['id'] ? 'selected' : '' ?>>
+                            <?= h((string) $f['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <button type="submit">Filter</button>
         </div>
     </form>

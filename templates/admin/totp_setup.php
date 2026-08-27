@@ -20,15 +20,13 @@ use function OpenSendForm\Admin\icon;
              screen, from the shared admin.js — no divergent markup. */ ?>
     <form method="post" action="/admin/totp/recovery-codes/regenerate">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <p>
-            <label for="code">Authentication code</label><br>
+        <div class="osf-field">
+            <label for="code">Authentication code</label>
             <input type="text" id="code" name="code" inputmode="numeric"
                    autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
                    required data-totp-code>
-        </p>
-        <p>
-            <button type="submit">Regenerate recovery codes</button>
-        </p>
+        </div>
+        <button type="submit">Regenerate recovery codes</button>
     </form>
 
     <?php /* Clearly separated destructive action: disabling 2FA. */ ?>
@@ -44,19 +42,17 @@ use function OpenSendForm\Admin\icon;
         <?php endif; ?>
         <form method="post" action="/admin/totp/disable">
             <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-            <p>
-                <label for="disable_password">Current password</label><br>
+            <div class="osf-field">
+                <label for="disable_password">Current password</label>
                 <input type="password" id="disable_password" name="current_password"
                        autocomplete="current-password" required>
-            </p>
-            <p>
-                <label for="disable_code">Authentication code</label><br>
+            </div>
+            <div class="osf-field">
+                <label for="disable_code">Authentication code</label>
                 <input type="text" id="disable_code" name="code" inputmode="numeric"
                        autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
-            </p>
-            <p>
-                <button type="submit" class="osf-danger">Disable two-factor authentication</button>
-            </p>
+            </div>
+            <button type="submit" class="osf-danger">Disable two-factor authentication</button>
         </form>
     </section>
 
@@ -90,15 +86,13 @@ use function OpenSendForm\Admin\icon;
 
     <form method="post" action="/admin/totp/setup">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <p>
-            <label for="code">Authentication code</label><br>
+        <div class="osf-field">
+            <label for="code">Authentication code</label>
             <input type="text" id="code" name="code" inputmode="numeric"
                    autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
                    autofocus required data-totp-code>
-        </p>
-        <p>
-            <button type="submit">Enable two-factor authentication</button>
-        </p>
+        </div>
+        <button type="submit">Enable two-factor authentication</button>
     </form>
 
 <?php endif; ?>

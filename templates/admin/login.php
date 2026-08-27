@@ -10,17 +10,15 @@ use function OpenSendForm\Admin\icon;
 
 <form method="post" action="/admin/login">
     <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-    <p>
-        <label for="email">Email</label><br>
+    <div class="osf-field">
+        <label for="email">Email</label>
         <input type="email" id="email" name="email" autocomplete="username"
                value="<?= h($email ?? '') ?>" required autofocus>
-    </p>
-    <p>
-        <label for="password">Password</label><br>
+    </div>
+    <div class="osf-field">
+        <label for="password">Password</label>
         <input type="password" id="password" name="password"
                autocomplete="current-password" required>
-    </p>
-    <p>
-        <button type="submit">Sign in</button>
-    </p>
+    </div>
+    <button type="submit">Sign in</button>
 </form>

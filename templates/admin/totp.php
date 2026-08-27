@@ -18,12 +18,10 @@
          data-totp-recovery-toggle in admin.js. */ ?>
 <form method="post" action="/admin/totp">
     <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-    <p>
-        <label for="code">Authentication code</label><br>
+    <div class="osf-field">
+        <label for="code">Authentication code</label>
         <input type="text" id="code" name="code" autocomplete="one-time-code"
                autofocus required data-totp-code data-totp-recovery-toggle>
-    </p>
-    <p>
-        <button type="submit">Verify</button>
-    </p>
+    </div>
+    <button type="submit">Verify</button>
 </form>
