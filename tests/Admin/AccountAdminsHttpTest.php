@@ -64,8 +64,10 @@ final class AccountAdminsHttpTest extends TestCase
         $body = (string) $this->get('/admin/account')->getBody();
         self::assertStringContainsString('Your account', $body);
         self::assertStringContainsString('boss@example.com', $body);
-        // Nav shows the admin name as a link to the account screen.
-        self::assertMatchesRegularExpression('/href="\/admin\/account"[^>]*>\s*The Boss/', $body);
+        // Nav shows the admin name as the account dropdown's trigger, and the
+        // dropdown panel links to the account screen.
+        self::assertMatchesRegularExpression('/<summary class="osf-nav-link osf-admin-name">\s*The Boss/', $body);
+        self::assertStringContainsString('<a class="osf-account-item" href="/admin/account">Your account</a>', $body);
     }
 
     public function testChangeDisplayName(): void

@@ -151,7 +151,7 @@ final class DesignSystemTest extends TestCase
         $required = [
             'sun', 'moon', 'monitor', 'copy', 'download', 'trash-2', 'pencil',
             'check', 'x', 'alert-triangle', 'info', 'book-open', 'log-out',
-            'eye', 'eye-off',
+            'eye', 'eye-off', 'chevron-down',
         ];
 
         foreach ($required as $name) {
@@ -217,6 +217,70 @@ final class DesignSystemTest extends TestCase
             self::assertStringNotContainsString('role="complementary"', $html, 'No sidebar in ' . basename($file));
             self::assertDoesNotMatchRegularExpression('/class="[^"]*sidebar/i', $html, 'No sidebar in ' . basename($file));
         }
+    }
+
+    // --- Header: two rows, one surface, one hairline under the second -----
+
+    public function testHeaderIsTwoRowsOnTheSameSurfaceWithOneHairlineUnderTheSecond(): void
+    {
+        $css = self::read('public/assets/admin.css');
+
+        self::assertMatchesRegularExpression('/\.osf-header\s*\{([^}]*)\}/s', $css, '.osf-header rule not found');
+        preg_match('/\.osf-header\s*\{([^}]*)\}/s', $css, $headerBlock);
+        self::assertStringContainsString('--osf-bg-raised', $headerBlock[1]);
+        self::assertStringNotContainsString(
+            'border-bottom',
+            $headerBlock[1],
+            'No divider between the header\'s two rows'
+        );
+
+        self::assertMatchesRegularExpression('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, '.osf-tabnav rule not found');
+        preg_match('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, $tabnavBlock);
+        self::assertStringContainsString('--osf-bg-raised', $tabnavBlock[1]);
+        self::assertStringContainsString(
+            'border-bottom',
+            $tabnavBlock[1],
+            'The single hairline sits under the second (tab) row'
+        );
+    }
+
+    // --- Tab bar: architect-supplied active-tab orange ---------------------
+
+    public function testTabBarUsesTheArchitectSuppliedActiveTabToken(): void
+    {
+        $css = self::read('public/assets/admin.css');
+        self::assertMatchesRegularExpression(
+            '/\.osf-tab-link\[aria-current="page"\]\s*\{[^}]*--osf-tab-active/s',
+            $css,
+            'The active tab underline does not reference --osf-tab-active'
+        );
+
+        $tokens = self::read('public/assets/tokens.css');
+        self::assertStringContainsString('--osf-tab-active:', $tokens);
+        self::assertStringContainsString('#f78166', $tokens);
+    }
+
+    // --- Account menu: <details>/<summary>, no standalone logout button ---
+
+    public function testAccountMenuIsADetailsDropdownWithLogoutInsideIt(): void
+    {
+        $nav = self::read('templates/admin/_nav.php');
+
+        // The admin name is a native <details>/<summary> dropdown (no JS
+        // needed to open/close it, CSP-safe) rather than a plain link.
+        self::assertStringContainsString('<details class="osf-account-menu">', $nav);
+        self::assertStringContainsString('<summary class="osf-nav-link osf-admin-name">', $nav);
+        self::assertStringContainsString("icon('chevron-down'", $nav);
+
+        // The panel holds the account link and the logout form as menu items.
+        self::assertStringContainsString('class="osf-account-panel"', $nav);
+        self::assertStringContainsString('href="/admin/account">Your account</a>', $nav);
+        self::assertStringContainsString('action="/admin/logout"', $nav);
+        self::assertStringContainsString('osf-account-item--danger', $nav);
+
+        // Exactly one logout form in the nav partial — no standalone logout
+        // button sits outside the dropdown.
+        self::assertSame(1, substr_count($nav, 'action="/admin/logout"'));
     }
 
     // --- Responsive tables collapse to cards ------------------------------
