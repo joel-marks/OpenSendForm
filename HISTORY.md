@@ -955,3 +955,48 @@
 - QUESTIONS.md: both Increment 7 items resolved with decision notes (#1 per
   the ruling above; #2 — the 15.4 KB `osf.js` size — ratified as-is, no code
   change).
+
+## 2026-08-27 — Housekeeping: dev-server router, Composer timeout, root
+## landing, migrate command
+- Branch: chore/dev-serve-and-migrate (off latest main).
+- `public/dev-router.php` for `composer serve`: PHP's built-in server 404s a
+  request whose path resembles a static file (e.g. `/embed/manual.html`)
+  instead of handing it to a router script; this router serves an existing
+  file under `public/` natively (`return false`) and otherwise requires
+  `public/index.php`. Dev-only — headed comment states it's never the
+  production entry point. `composer.json` `serve` script updated to pass it.
+- `composer.json`: `config.process-timeout` set to `0` — the default 300s was
+  killing `composer serve` five minutes into every dev session.
+- `GET /` route added (`Routes.php`): 302 to `/admin/login`. Previously an
+  installed instance's root URL fell through to Slim's raw 404 (no route
+  registered at all); the existing `InstallStateMiddleware` already redirects
+  everything to `/install` when not installed, so that half needed no change.
+- `bin/osf migrate`: new explicit command, checked for and documented as the
+  fix for a live incident (migration 009 `allow_nojs` shipped, an
+  already-installed instance that only unzipped the new code kept hitting
+  `Undefined array key "allow_nojs"` warnings on every form read because
+  nothing had ever re-run the migrator against it). Checks
+  `Paths::isInstalled()` itself — error + exit 1 before the browser installer
+  has run — then runs `MigrationRunner::migrate()`, prints each newly-applied
+  filename or "Already up to date.", exit 0. Idempotent; safe to re-run. The
+  pre-existing implicit auto-migrate at every other `bin/osf` command's boot
+  is unchanged.
+- `MigrationRunner::pendingCount()` added (directory listing + one SELECT, no
+  schema changes) and wired into `AdminController::dashboard()` to drive a
+  new non-dismissible red banner in `templates/admin/dashboard.php`:
+  "Database update required — run bin/osf migrate (N pending)". Dashboard
+  only; deliberately no auto-migration triggered by any web request.
+- Removed a stray untracked `public/embed/manual.html` left over from local
+  testing; `Routes::embedManual` serves the real one from
+  `tests/embed-manual.html` (the single source), unaffected.
+- Tests (+11, 415 total, 2516 assertions): `DevRouterTest` (router file
+  content/shape, serve script + process-timeout wiring in composer.json);
+  `Http/RootRedirectTest` (installed root → 302 `/admin/login`);
+  `Cli/CliMigrateTest` (refuses pre-install; applies pending migrations to a
+  stale DB fixture built from copies of the real numbered migration files and
+  reports each one; idempotent second run reports "Already up to date.";
+  fresh install applies all nine); `Admin/DashboardStaleSchemaTest` (banner
+  present against a version-8 fixture DB, absent on a current schema). Full
+  suite green.
+- No new Composer dependencies. Nothing logged to QUESTIONS.md — no
+  architecture/security/scope questions arose.

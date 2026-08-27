@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-26 (fix/nojs-policy, Claude Code)
+Last updated: 2026-08-27 (chore/dev-serve-and-migrate, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -8,15 +8,18 @@ validation/abuse pipeline; passing submissions are stored and relayed by
 authenticated SMTP (in-request send + operator retry cron). Increment 7 added
 the CLIENT-SITE ARTEFACT: one static embed JS (`public/embed/osf.js`) any
 website pastes in, a no-JS HTML fallback on the submit endpoint, cache-headed
-embed serving, and an admin "Embed code" snippet panel. This sprint
-(fix/nojs-policy) resolved the increment's open no-JS delivery question with a
-per-form `allow_nojs` toggle — see "No-JS submission policy" below. Prior
-increments: 4 optional per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id
-auth, TOTP 2FA + recovery codes, Pico.css, forms/submissions CRUD,
-account/admins mgmt); 6a the BROWSER INSTALLER engine; 6b the MAIL-SETUP
-wizard (SMTP write-back, test send, SPF/DKIM/DMARC checker). Suite green (404
-tests). CI runs it on every PR/push. Increments 6a/6b/7 are merged to main
-(PRs #15/#16/#17); this branch builds on the full stack.
+embed serving, and an admin "Embed code" snippet panel. fix/nojs-policy
+resolved the increment's open no-JS delivery question with a per-form
+`allow_nojs` toggle — see "No-JS submission policy" below. This sprint
+(chore/dev-serve-and-migrate) is housekeeping from live dev use: dev-server
+routing, an explicit `bin/osf migrate` command, and a dashboard staleness
+banner — see "Dev tooling" and "Upgrade path" below. Prior increments: 4
+optional per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id auth, TOTP 2FA
++ recovery codes, Pico.css, forms/submissions CRUD, account/admins mgmt); 6a
+the BROWSER INSTALLER engine; 6b the MAIL-SETUP wizard (SMTP write-back, test
+send, SPF/DKIM/DMARC checker). Suite green (415 tests). CI runs it on every
+PR/push. Increments 6a/6b/7 and fix/nojs-policy are merged to main; this
+branch builds on the full stack.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -76,6 +79,31 @@ authenticated SMTP to the site owner.
   is always discarded either way. The JSON/fetch path (what the embed JS
   sends) is unaffected by any of this.
 
+## Dev tooling + upgrade path (chore/dev-serve-and-migrate)
+- `composer serve` → `php -S 0.0.0.0:8080 -t public public/dev-router.php`.
+  PHP's built-in server 404s any request whose path looks like a static file
+  (e.g. `/embed/manual.html`) instead of forwarding it to a router; the router
+  fixes that: `return false` when the path is an existing file under
+  `public/` (served natively), else `require public/index.php`. Dev-only —
+  production still goes through Apache's rewrite straight to `index.php`.
+  `composer.json` also sets `config.process-timeout: 0` (the default 300s was
+  killing `composer serve` five minutes in). Tests: `DevRouterTest.php`.
+- `GET /` (no page of its own) now redirects instead of Slim's raw 404: 302 to
+  `/admin/login` when installed, or (existing `InstallStateMiddleware`,
+  unchanged) to `/install` when not. Test: `Http/RootRedirectTest.php`.
+- **Upgrade path**: `MigrationRunner::migrate()` previously only ran during
+  install and silently at every `bin/osf` command's boot — no visible, obvious
+  step existed for bringing an already-installed instance's DB forward after
+  unzipping new code. Live incident: migration 009 (`allow_nojs`) shipped, an
+  installed-but-not-re-migrated instance hit `Undefined array key "allow_nojs"`
+  on every form read. Fix: `bin/osf migrate` — checks `Paths::isInstalled()`
+  itself (error + exit 1 if not), runs the runner, prints each newly-applied
+  filename or "Already up to date.", exit 0, idempotent. Plus a new
+  `MigrationRunner::pendingCount()` drives a non-dismissible red dashboard
+  banner ("Database update required — run bin/osf migrate (N pending)"),
+  dashboard-only, no auto-migration on any web request. Tests:
+  `Cli/CliMigrateTest.php`, `Admin/DashboardStaleSchemaTest.php`.
+
 ## Mail-setup wizard + installer (6a/6b) — condensed; see HISTORY
 - 6a: installed iff BOTH var/config.php and var/install.lock exist; CSRF wizard
   writes config atomically then the lock; `Config::fromFile/load`, `DB_USER/
@@ -109,15 +137,20 @@ SubmitHtmlPage.php`; `Routes` content negotiation + `/embed/osf.js` and
 `/embed/manual.html` routes; `templates/admin/form_edit.php` embed panel +
 `FormsController` base-URL derivation; `tests/embed-manual.html`; tests
 `tests/Http/{SubmitHtmlResponseTest,EmbedAssetTest}`, `tests/Admin/
-EmbedPanelTest`. Plus this sprint: migration 009 (`forms.allow_nojs`); the
+EmbedPanelTest`. Plus fix/nojs-policy: migration 009 (`forms.allow_nojs`); the
 `allow_nojs` checkbox on form-edit; `SubmitContext::prefersHtml`; the
-`TokenStage` no-JS policy; the snippet's static `_osf_hp` honeypot field.
-Only hard Composer dep remains phpmailer/phpmailer ^6.
+`TokenStage` no-JS policy; the snippet's static `_osf_hp` honeypot field. Plus
+this sprint (chore/dev-serve-and-migrate): `public/dev-router.php`; `GET /`
+root redirect; `bin/osf migrate`; `MigrationRunner::pendingCount()`; the
+dashboard staleness banner — see "Dev tooling" / "Upgrade path" above. Only
+hard Composer dep remains phpmailer/phpmailer ^6.
 
 ## Known gaps / not built (by design)
 - Synthetic monitoring (8), zip packaging/release layout + production `.htaccess`
-  (front-controller rewrite + static cache headers), upgrade/migration-on-update
-  — later increments.
+  (front-controller rewrite + static cache headers) — later increments.
+  Migration-on-update is now solved for the manual case (`bin/osf migrate` +
+  dashboard banner, this sprint); what's still missing is any AUTOMATIC trigger
+  (e.g. a post-unzip hook) — out of scope until the release/packaging work.
 - Password RESET by email, roles/permissions, account deletion, audit log.
 - File uploads / redirect success URLs (explicitly out of embed scope).
 - Real MySQL live-test, NativeSession `$_SESSION`, real SMTP/DNS, and the DOM
@@ -126,9 +159,9 @@ Only hard Composer dep remains phpmailer/phpmailer ^6.
 
 ## Open items
 None outstanding. QUESTIONS.md Increment 7 #1 (no-JS delivery vs the token
-stage) and #2 (osf.js size) are both RESOLVED this sprint (fix/nojs-policy);
-the 6b branch/merge-order flag was already RESOLVED (6a/6b/7 merged to main
-via PRs #15/#16/#17).
+stage) and #2 (osf.js size) were RESOLVED in fix/nojs-policy; the 6b
+branch/merge-order flag was already RESOLVED (6a/6b/7 merged to main via PRs
+#15/#16/#17). Nothing raised this sprint (chore/dev-serve-and-migrate).
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin
