@@ -633,9 +633,17 @@ final class AdminUiTest extends TestCase
         self::assertStringContainsString('class="osf-header"', $body);
         self::assertStringNotContainsString('<aside', $body);
 
-        // The active destination is marked for assistive tech and styling.
+        // The header carries only brand + right-aligned account controls —
+        // the primary destinations live in the tab bar beneath it.
+        self::assertStringContainsString('class="osf-tabnav"', $body);
         self::assertMatchesRegularExpression(
-            '/<a class="osf-nav-link" href="\/admin" aria-current="page">Dashboard<\/a>/',
+            '/<a class="osf-tab-link" href="\/admin" aria-current="page">Dashboard<\/a>/',
+            $body
+        );
+        // Account is a header link (admin name), not a tab.
+        self::assertStringNotContainsString('>Account<', $body);
+        self::assertMatchesRegularExpression(
+            '/<a class="osf-admin-name osf-nav-link" href="\/admin\/account">The Boss<\/a>/',
             $body
         );
 

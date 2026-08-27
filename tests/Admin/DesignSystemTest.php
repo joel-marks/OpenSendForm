@@ -181,17 +181,21 @@ final class DesignSystemTest extends TestCase
     {
         $nav = self::read('templates/admin/_nav.php');
 
-        // Header bar shape (not a docs layout).
+        // Header bar shape (not a docs layout), plus the tab bar beneath it.
         self::assertStringContainsString('osf-header', $nav);
-        self::assertStringContainsString('osf-nav', $nav);
+        self::assertStringContainsString('osf-tabnav', $nav);
 
-        // The six primary destinations remain in the top bar (labels are
-        // passed as string args to the link builder in the template).
-        foreach (['Dashboard', 'Forms', 'Submissions', 'Email', 'Admins', 'Account'] as $label) {
-            self::assertStringContainsString("'{$label}'", $nav, "Nav is missing the {$label} link");
+        // The five primary destinations live in the tab bar (labels are
+        // passed as string args to the tab builder in the template).
+        foreach (['Dashboard', 'Forms', 'Submissions', 'Email', 'Admins'] as $label) {
+            self::assertStringContainsString("'{$label}'", $nav, "Nav is missing the {$label} tab");
         }
 
-        // Docs link: external, new tab, noopener, book-open icon.
+        // Account is NOT a tab — it lives on the admin-name link in the header.
+        self::assertStringNotContainsString("'Account'", $nav);
+        self::assertStringContainsString('osf-admin-name', $nav);
+
+        // Docs link: external, new tab, noopener, book-open icon — in the header.
         self::assertStringContainsString('href="https://opensendform.com"', $nav);
         self::assertStringContainsString('target="_blank"', $nav);
         self::assertStringContainsString('rel="noopener"', $nav);
