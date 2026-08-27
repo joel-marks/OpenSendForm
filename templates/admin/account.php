@@ -21,9 +21,11 @@ use function OpenSendForm\Admin\h;
     <h2>Display name</h2>
     <form method="post" action="/admin/account/name">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <label for="display_name">Display name</label>
-        <input type="text" id="display_name" name="display_name"
-               value="<?= h($displayName) ?>" required>
+        <div class="osf-field">
+            <label for="display_name">Display name</label>
+            <input type="text" id="display_name" name="display_name"
+                   value="<?= h($displayName) ?>" required>
+        </div>
         <button type="submit">Save display name</button>
     </form>
 </section>
@@ -33,11 +35,15 @@ use function OpenSendForm\Admin\h;
     <p><small>Changing your email requires your current password.</small></p>
     <form method="post" action="/admin/account/email">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <label for="email">Email address</label>
-        <input type="email" id="email" name="email" value="<?= h($email) ?>" required>
-        <label for="email_current_password">Current password</label>
-        <input type="password" id="email_current_password" name="current_password"
-               autocomplete="current-password" required>
+        <div class="osf-field">
+            <label for="email">Email address</label>
+            <input type="email" id="email" name="email" value="<?= h($email) ?>" required>
+        </div>
+        <div class="osf-field">
+            <label for="email_current_password">Current password</label>
+            <input type="password" id="email_current_password" name="current_password"
+                   autocomplete="current-password" required>
+        </div>
         <button type="submit">Update email</button>
     </form>
 </section>
@@ -48,15 +54,21 @@ use function OpenSendForm\Admin\h;
         <?= h((string) $minPasswordLength) ?> characters, twice.</small></p>
     <form method="post" action="/admin/account/password">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <label for="current_password">Current password</label>
-        <input type="password" id="current_password" name="current_password"
-               autocomplete="current-password" required>
-        <label for="new_password">New password</label>
-        <input type="password" id="new_password" name="new_password"
-               autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
-        <label for="confirm_password">Confirm new password</label>
-        <input type="password" id="confirm_password" name="confirm_password"
-               autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
+        <div class="osf-field">
+            <label for="current_password">Current password</label>
+            <input type="password" id="current_password" name="current_password"
+                   autocomplete="current-password" required>
+        </div>
+        <div class="osf-field">
+            <label for="new_password">New password</label>
+            <input type="password" id="new_password" name="new_password"
+                   autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
+        </div>
+        <div class="osf-field">
+            <label for="confirm_password">Confirm new password</label>
+            <input type="password" id="confirm_password" name="confirm_password"
+                   autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
+        </div>
         <button type="submit">Change password</button>
     </form>
 </section>

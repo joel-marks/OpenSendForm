@@ -137,11 +137,11 @@ main.container {
     border: 0;
 }
 
-/* --- Header bar (brand + account controls, no sidebar) ---------------- */
+/* --- Header bar: two compact rows, both on --osf-bg-raised, no divider
+   between them — a single hairline sits under the second (tab) row only. -- */
 
 .osf-header {
     background: var(--osf-bg-raised);
-    border-bottom: 1px solid var(--osf-border);
 }
 
 .osf-header-inner {
@@ -149,8 +149,8 @@ main.container {
     flex-wrap: wrap;            /* narrow viewports wrap to more rows */
     align-items: center;
     gap: var(--osf-space-2) var(--osf-space-4);
-    padding-top: var(--osf-space-3);
-    padding-bottom: var(--osf-space-3);
+    padding-top: var(--osf-space-2);
+    padding-bottom: var(--osf-space-2);
 }
 
 .osf-brand {
@@ -195,10 +195,81 @@ main.container {
     margin: 0;
 }
 
-/* --- Tab bar (GitHub UnderlineNav style, sits beneath the header) ------ */
+/* --- Account dropdown menu (<details>/<summary>, no JS) ---------------- */
+
+.osf-account-menu {
+    position: relative;
+}
+
+.osf-account-menu > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.osf-account-menu > summary::-webkit-details-marker,
+.osf-account-menu > summary::marker {
+    display: none;
+    content: '';
+}
+
+.osf-account-caret {
+    transition: transform 0.15s ease;
+}
+
+.osf-account-menu[open] > summary .osf-account-caret {
+    transform: rotate(180deg);
+}
+
+.osf-account-panel {
+    position: absolute;
+    top: calc(100% + var(--osf-space-1));
+    right: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 11rem;
+    padding: var(--osf-space-1);
+    background: var(--osf-bg-raised);
+    border: 1px solid var(--osf-border);
+    border-radius: var(--osf-radius);
+    box-shadow: var(--osf-shadow-dropdown);
+}
+
+.osf-account-panel .osf-inline-form {
+    display: block;
+    margin: 0;
+}
+
+.osf-account-item {
+    display: flex;
+    align-items: center;
+    gap: var(--osf-space-1);
+    width: 100%;
+    padding: var(--osf-space-2) var(--osf-space-3);
+    background: none;
+    border: 0;
+    border-radius: var(--osf-radius);
+    color: var(--osf-text);
+    font-size: 0.9rem;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+}
+
+.osf-account-item:hover {
+    background: var(--osf-bg-inset);
+    color: var(--osf-text);
+    text-decoration: none;
+}
+
+.osf-account-item--danger { color: var(--osf-danger); }
+
+/* --- Tab bar (GitHub UnderlineNav style, sits beneath the header; the
+   hairline border on this row is the only divider in the two-row header). - */
 
 .osf-tabnav {
-    background: var(--osf-bg);
+    background: var(--osf-bg-raised);
     border-bottom: 1px solid var(--osf-border);
 }
 
@@ -211,7 +282,7 @@ main.container {
 .osf-tab-link {
     display: inline-flex;
     align-items: center;
-    padding: var(--osf-space-3) var(--osf-space-1);
+    padding: var(--osf-space-1) var(--osf-space-1);
     color: var(--osf-text-muted);
     font-size: 0.9rem;
     font-weight: 500;
@@ -227,7 +298,7 @@ main.container {
 .osf-tab-link[aria-current="page"] {
     color: var(--osf-text);
     font-weight: 600;
-    border-bottom-color: var(--osf-accent-emphasis);
+    border-bottom-color: var(--osf-tab-active);
 }
 
 /* Icon-only theme toggle: the visible glyph is driven by data-theme-mode
@@ -305,6 +376,13 @@ input[type="submit"]:hover { text-decoration: none; filter: brightness(1.08); }
     border-color: var(--osf-danger);
 }
 
+/* Small variant: every action button inside a table row (Edit, Disable,
+   Delete, Reactivate, Deactivate, Retry) so same-context buttons match. */
+.osf-btn-sm {
+    padding: var(--osf-space-1) var(--osf-space-3);
+    font-size: 0.85rem;
+}
+
 /* Link-styled button (e.g. the recovery-code mode toggle). */
 .osf-link-button {
     display: inline-block;
@@ -351,7 +429,7 @@ select:focus {
 input[type="checkbox"],
 input[type="radio"] {
     width: auto;
-    margin-right: 0.4rem;
+    margin-right: var(--osf-space-1);
     vertical-align: middle;
     accent-color: var(--osf-accent-emphasis);
 }
@@ -381,6 +459,21 @@ legend { padding: 0 var(--osf-space-1); }
 
 form { margin-bottom: var(--osf-space-4); }
 
+/* A single label+input(+hint) field, spaced explicitly by the field wrapper
+   rather than relying on an adjacent label's own top margin — keeps a run of
+   fields in the same section evenly gapped regardless of what precedes them. */
+.osf-field {
+    margin-bottom: var(--osf-space-4);
+}
+
+.osf-field:last-child {
+    margin-bottom: 0;
+}
+
+.osf-field label {
+    margin-top: 0;
+}
+
 /* --- Action groups (buttons/links that act together, e.g. a table row's
    Edit + Disable, or a form's submit + Cancel) -------------------------- */
 
@@ -389,6 +482,31 @@ form { margin-bottom: var(--osf-space-4); }
     flex-wrap: wrap;
     align-items: center;
     gap: var(--osf-space-2);
+}
+
+/* A toolbar row that pairs a filter/search bar with a separate action off to
+   the side (e.g. the submissions filter bar + "Retry all due now"): the two
+   groups sit on one row with clear separation, wrapping gracefully. */
+.osf-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--osf-space-4);
+    margin-bottom: var(--osf-space-4);
+}
+
+/* A compact inline row of filter controls (select, select, button). */
+.osf-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--osf-space-2);
+    margin: 0;
+}
+
+.osf-filter-bar select {
+    width: auto;
 }
 
 /* --- Cards / sections ------------------------------------------------- */
@@ -501,7 +619,7 @@ section > h1:first-child { margin-top: 0; }
     color: var(--osf-text-muted);
 }
 
-.osf-error-detail[open] summary { margin-bottom: 0.35rem; }
+.osf-error-detail[open] summary { margin-bottom: var(--osf-space-1); }
 
 .osf-error-detail pre {
     white-space: pre-wrap;
@@ -576,13 +694,23 @@ section > h1:first-child { margin-top: 0; }
 .osf-flash--error > .osf-icon   { color: var(--osf-danger); }
 .osf-flash--info > .osf-icon    { color: var(--osf-info); }
 
-/* Dashboard nudge: message + dismiss button pushed to the right. */
+/* Dismissible banner: message grows, dismiss control pinned right on the
+   SAME row — never wraps to a new line, even on narrow viewports. */
 .osf-nudge {
     display: flex;
     justify-content: space-between;
-    gap: var(--osf-space-4);
-    flex-wrap: wrap;
     align-items: center;
+    gap: var(--osf-space-4);
+    flex-wrap: nowrap;
+}
+
+.osf-nudge > span {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.osf-nudge .osf-inline-form {
+    flex: none;
 }
 
 /* Separated destructive-action block (e.g. disabling two-factor auth). */

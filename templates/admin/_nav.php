@@ -27,13 +27,23 @@ $tab = static function (string $key, string $href, string $label) use ($active):
             </button>
 
             <?php if (($adminName ?? '') !== ''): ?>
-                <a class="osf-admin-name osf-nav-link" href="/admin/account"><?= h($adminName) ?></a>
+                <?php /* No-JS-safe dropdown (native <details>/<summary>, GitHub's
+                         own pattern) — CSP-safe, no JS required to open/close. */ ?>
+                <details class="osf-account-menu">
+                    <summary class="osf-nav-link osf-admin-name">
+                        <?= h($adminName) ?><?= icon('chevron-down', 'osf-account-caret') ?>
+                    </summary>
+                    <div class="osf-account-panel">
+                        <a class="osf-account-item" href="/admin/account">Your account</a>
+                        <form method="post" action="/admin/logout" class="osf-inline-form">
+                            <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
+                            <button type="submit" class="osf-account-item osf-account-item--danger">
+                                <?= icon('log-out') ?> Log out
+                            </button>
+                        </form>
+                    </div>
+                </details>
             <?php endif; ?>
-
-            <form method="post" action="/admin/logout" class="osf-inline-form">
-                <input type="hidden" name="_csrf" value="<?= h($csrf ?? '') ?>">
-                <button type="submit" class="secondary"><?= icon('log-out') ?> Log out</button>
-            </form>
         </div>
     </div>
 </header>

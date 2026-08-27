@@ -31,33 +31,35 @@ $return = [
 ?>
 <h1>Submissions</h1>
 
-<form method="get" action="/admin/submissions" role="search">
-    <fieldset role="group">
-        <select name="status" aria-label="Filter by status">
-            <option value="">All statuses</option>
-            <?php foreach ($statuses as $s): ?>
-                <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h($s) ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select name="form" aria-label="Filter by form">
-            <option value="">All forms</option>
-            <?php foreach ($forms as $f): ?>
-                <option value="<?= h((string) $f['id']) ?>" <?= $formId === (int) $f['id'] ? 'selected' : '' ?>>
-                    <?= h((string) $f['name']) ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-        <button type="submit">Filter</button>
-    </fieldset>
-</form>
+<div class="osf-toolbar">
+    <form method="get" action="/admin/submissions" role="search" class="osf-inline-form">
+        <div role="group" aria-label="Filter submissions" class="osf-filter-bar">
+            <select name="status" aria-label="Filter by status">
+                <option value="">All statuses</option>
+                <?php foreach ($statuses as $s): ?>
+                    <option value="<?= h($s) ?>" <?= $status === $s ? 'selected' : '' ?>><?= h($s) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <select name="form" aria-label="Filter by form">
+                <option value="">All forms</option>
+                <?php foreach ($forms as $f): ?>
+                    <option value="<?= h((string) $f['id']) ?>" <?= $formId === (int) $f['id'] ? 'selected' : '' ?>>
+                        <?= h((string) $f['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit">Filter</button>
+        </div>
+    </form>
 
-<form method="post" action="/admin/submissions/retry-due">
-    <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-    <input type="hidden" name="status" value="<?= h($return['status']) ?>">
-    <input type="hidden" name="form" value="<?= h($return['form']) ?>">
-    <input type="hidden" name="page" value="<?= h($return['page']) ?>">
-    <button type="submit" class="secondary">Retry all due now</button>
-</form>
+    <form method="post" action="/admin/submissions/retry-due" class="osf-inline-form">
+        <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+        <input type="hidden" name="status" value="<?= h($return['status']) ?>">
+        <input type="hidden" name="form" value="<?= h($return['form']) ?>">
+        <input type="hidden" name="page" value="<?= h($return['page']) ?>">
+        <button type="submit" class="secondary">Retry all due now</button>
+    </form>
+</div>
 
 <p><small><?= h((string) $total) ?> submission(s) match.</small></p>
 
@@ -110,7 +112,7 @@ $return = [
                                 <input type="hidden" name="status" value="<?= h($return['status']) ?>">
                                 <input type="hidden" name="form" value="<?= h($return['form']) ?>">
                                 <input type="hidden" name="page" value="<?= h($return['page']) ?>">
-                                <button type="submit">Retry</button>
+                                <button type="submit" class="osf-btn-sm">Retry</button>
                             </form>
                         <?php else: ?>
                             <span aria-hidden="true">—</span>

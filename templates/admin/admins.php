@@ -72,7 +72,7 @@ use function OpenSendForm\Admin\icon;
                             <form class="osf-inline-form" method="post"
                                   action="/admin/admins/<?= h((string) $id) ?>/deactivate">
                                 <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <button type="submit" class="osf-danger">Deactivate</button>
+                                <button type="submit" class="osf-danger osf-btn-sm">Deactivate</button>
                             </form>
                         <?php elseif ($active): ?>
                             <span class="osf-badge osf-badge--muted" title="The last active admin cannot be deactivated.">last active admin</span>
@@ -80,11 +80,11 @@ use function OpenSendForm\Admin\icon;
                             <form class="osf-inline-form" method="post"
                                   action="/admin/admins/<?= h((string) $id) ?>/reactivate">
                                 <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <button type="submit" class="secondary">Reactivate</button>
+                                <button type="submit" class="secondary osf-btn-sm">Reactivate</button>
                             </form>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
-                            <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger"><?= icon('trash-2') ?> Delete</a>
+                            <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="osf-danger osf-btn-sm"><?= icon('trash-2') ?> Delete</a>
                         <?php endif; ?>
                     </div>
                 </td>
@@ -106,13 +106,19 @@ use function OpenSendForm\Admin\icon;
     </p>
     <form method="post" action="/admin/admins">
         <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <label for="new_admin_email">Email address</label>
-        <input type="email" id="new_admin_email" name="email" value="<?= h($newEmail) ?>" required>
-        <label for="new_admin_name">Display name</label>
-        <input type="text" id="new_admin_name" name="name" value="<?= h($newName) ?>" required>
-        <label for="new_admin_password">Initial password</label>
-        <input type="password" id="new_admin_password" name="password"
-               autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
+        <div class="osf-field">
+            <label for="new_admin_email">Email address</label>
+            <input type="email" id="new_admin_email" name="email" value="<?= h($newEmail) ?>" required>
+        </div>
+        <div class="osf-field">
+            <label for="new_admin_name">Display name</label>
+            <input type="text" id="new_admin_name" name="name" value="<?= h($newName) ?>" required>
+        </div>
+        <div class="osf-field">
+            <label for="new_admin_password">Initial password</label>
+            <input type="password" id="new_admin_password" name="password"
+                   autocomplete="new-password" minlength="<?= h((string) $minPasswordLength) ?>" required>
+        </div>
         <button type="submit">Create admin</button>
     </form>
 </section>
