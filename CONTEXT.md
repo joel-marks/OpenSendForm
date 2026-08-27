@@ -1,25 +1,19 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (chore/dev-serve-and-migrate, Claude Code)
+Last updated: 2026-08-27 (fix/admin-delete, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
 validation/abuse pipeline; passing submissions are stored and relayed by
-authenticated SMTP (in-request send + operator retry cron). Increment 7 added
-the CLIENT-SITE ARTEFACT: one static embed JS (`public/embed/osf.js`) any
-website pastes in, a no-JS HTML fallback on the submit endpoint, cache-headed
-embed serving, and an admin "Embed code" snippet panel. fix/nojs-policy
-resolved the increment's open no-JS delivery question with a per-form
-`allow_nojs` toggle — see "No-JS submission policy" below. This sprint
-(chore/dev-serve-and-migrate) is housekeeping from live dev use: dev-server
-routing, an explicit `bin/osf migrate` command, and a dashboard staleness
-banner — see "Dev tooling" and "Upgrade path" below. Prior increments: 4
-optional per-form Turnstile; 5a/5b/5c the ADMIN stack (argon2id auth, TOTP 2FA
-+ recovery codes, Pico.css, forms/submissions CRUD, account/admins mgmt); 6a
-the BROWSER INSTALLER engine; 6b the MAIL-SETUP wizard (SMTP write-back, test
-send, SPF/DKIM/DMARC checker). Suite green (415 tests). CI runs it on every
-PR/push. Increments 6a/6b/7 and fix/nojs-policy are merged to main; this
-branch builds on the full stack.
+authenticated SMTP (in-request send + operator retry cron). Full admin panel
+(auth, 2FA, forms/submissions CRUD, mail-setup wizard, browser installer),
+a client-site embed artefact with a no-JS fallback, dev-server tooling and an
+explicit migration command are all built and merged to main — see the
+condensed sections below and HISTORY.md for full sprint-by-sprint detail.
+This sprint (fix/admin-delete) is an architect ruling reversal: 5c had
+deferred admin deletion by design (deactivation-only); admins can now be
+permanently deleted, server-guarded — see "Admin deletion" below. Suite green
+(429 tests). CI runs it on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -35,123 +29,100 @@ authenticated SMTP to the site owner.
   H:i:s` TEXT. Form keys are PUBLIC identifiers, stored plain.
 - Response contract (FROZEN): JSON only by default. Success `{"ok":true}`;
   failure `{"ok":false,"error":{"code","message"}}`. HTTP 200/400/403/405/
-  413/429. Increment 7 adds content negotiation: a client that prefers
-  text/html (a native browser form POST) gets an HTML page instead — the JSON
-  shape is unchanged for fetch/API callers.
+  413/429. A client that prefers text/html (a native browser form POST) gets
+  an HTML page instead — the JSON shape is unchanged for fetch/API callers.
 - Bot-facing checks fail SILENTLY (filled honeypot; missing/forged/too-young
-  token → fake success, nothing stored); an authentic but EXPIRED token returns
-  an honest `400 token_expired`. Deliberate exception: on the HTML-negotiated
-  (no-JS) path, a form with `allow_nojs=0` (default) instead returns an honest
-  `400 javascript_required` for a missing/forged/too-young token — see "No-JS
-  submission policy" below.
+  token → fake success, nothing stored); an authentic but EXPIRED token
+  returns an honest `400 token_expired`. Exception: on the HTML-negotiated
+  (no-JS) path, a form with `allow_nojs=0` (default) instead returns an
+  honest `400 javascript_required` for a missing/forged/too-young token —
+  see "No-JS submission policy" below.
 - Content always stored as the in-flight delivery payload; `store_content`
   means "retain content after successful delivery".
 - Config precedence: defaults < var/config.php < environment (env always wins).
 
-## Embed artefact + no-JS fallback (Increment 7, policy refined by
-## fix/nojs-policy) — condensed
-- `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build. Each
-  `form[data-osf-key]` initialises independently: fetches/holds a token,
-  reuses an existing `_osf_hp` honeypot input or injects one, submits over
-  `fetch` (`_osf_token`/`_osf_hp`/`_osf_cf`). Rich UX (spinner, focus-trapped
-  success dialog, "Send another", inline/form-level errors, invisible
-  `token_expired` retry, Turnstile render/reset, themeable injected CSS,
-  `prefers-reduced-motion`, aria-live, `osf:submit/:success/:error` events,
-  `data-osf-ui="none"`); never throws uncaught, degrades to native POST.
-- Progressive enhancement: the snippet's `<form action>` is the submit URL
-  (with a static hidden `_osf_hp` honeypot field), so JS-off still POSTs
-  directly. `src/Http/SubmitHtmlPage.php` renders a self-contained
-  success/error HTML page; `Routes::submit` content-negotiates on Accept into
-  `SubmitContext::prefersHtml`, shared with `TokenStage`'s no-JS policy below.
-- Serving: `GET /embed/osf.js` long-immutable-cached (`?v=` cache-bust);
-  `GET /embed/manual.html` dev-only checklist. Admin form-edit "Embed code"
-  panel shows the ready-filled snippet + `[data-copy]` button.
-- **No-JS submission policy** (resolves QUESTIONS.md Increment 7 #1):
-  migration 009 `forms.allow_nojs INTEGER NOT NULL DEFAULT 0` (admin checkbox
-  "Allow submissions without JavaScript"; `bin/osf form:list` shows
-  `[allow_nojs]`). On the HTML-negotiated path: `allow_nojs=0` (default) turns
-  a missing/forged/too-young token into an honest `400 javascript_required`
-  page, nothing stored — the one other exception to "bot checks fail
-  silently" (see above); `allow_nojs=1` skips the token check only for a
-  *missing* token (stores + delivers), a present-but-invalid one still falls
-  through to the silent discard; all other stages apply unchanged. A filled
-  honeypot always gets the generic success page (never the honest error) and
-  is always discarded either way. The JSON/fetch path (what the embed JS
-  sends) is unaffected by any of this.
+## Admin deletion (fix/admin-delete) — decision + guards
+- RULING (reverses the 5c "no delete action, deferred by design" decision):
+  admins can be hard-deleted (`AdminRepository::deleteAdmin`, prepared
+  `DELETE`). Deactivation stays as the reversible alternative — both are
+  offered from the Admins screen.
+- Three server-enforced guards on both the web POST and `bin/osf
+  admin:delete` (buttons also hidden client-side where applicable, but the
+  guards are re-checked on the POST regardless): an admin can never delete
+  themselves; the last remaining ACTIVE admin can never be deleted (deleting
+  an INACTIVE admin is always allowed, whatever the active count — mirrors
+  the pre-existing deactivate-guard); the acting admin must re-enter their
+  own CURRENT password on the web confirmation step (wrong password
+  re-renders with a 401 error, same re-authentication pattern as
+  `AccountController`). The CLI path has no password gate — shell access to
+  run `bin/osf` is already a higher privilege than the admin panel itself.
+- Web flow: `GET /admin/admins/{id}/delete` — confirmation screen states
+  deletion is permanent, shows the target's email, current-password field →
+  `POST` (same path) on success redirects to `/admin/admins` with a flash.
 
-## Dev tooling + upgrade path (chore/dev-serve-and-migrate)
-- `composer serve` → `php -S 0.0.0.0:8080 -t public public/dev-router.php`.
-  PHP's built-in server 404s any request whose path looks like a static file
-  (e.g. `/embed/manual.html`) instead of forwarding it to a router; the router
-  fixes that: `return false` when the path is an existing file under
-  `public/` (served natively), else `require public/index.php`. Dev-only —
-  production still goes through Apache's rewrite straight to `index.php`.
-  `composer.json` also sets `config.process-timeout: 0` (the default 300s was
-  killing `composer serve` five minutes in). Tests: `DevRouterTest.php`.
-- `GET /` (no page of its own) now redirects instead of Slim's raw 404: 302 to
-  `/admin/login` when installed, or (existing `InstallStateMiddleware`,
-  unchanged) to `/install` when not. Test: `Http/RootRedirectTest.php`.
-- **Upgrade path**: `MigrationRunner::migrate()` previously only ran during
-  install and silently at every `bin/osf` command's boot — no visible, obvious
-  step existed for bringing an already-installed instance's DB forward after
-  unzipping new code. Live incident: migration 009 (`allow_nojs`) shipped, an
-  installed-but-not-re-migrated instance hit `Undefined array key "allow_nojs"`
-  on every form read. Fix: `bin/osf migrate` — checks `Paths::isInstalled()`
-  itself (error + exit 1 if not), runs the runner, prints each newly-applied
-  filename or "Already up to date.", exit 0, idempotent. Plus a new
-  `MigrationRunner::pendingCount()` drives a non-dismissible red dashboard
-  banner ("Database update required — run bin/osf migrate (N pending)"),
-  dashboard-only, no auto-migration on any web request. Tests:
-  `Cli/CliMigrateTest.php`, `Admin/DashboardStaleSchemaTest.php`.
+## No-JS submission policy (fix/nojs-policy) — condensed; see HISTORY
+- `public/embed/osf.js`: one static vanilla-ES2017 file, no deps/build, rich
+  progressive-enhancement UX, never throws uncaught, degrades to native POST.
+  The snippet's `<form action>` is the submit URL, so JS-off still POSTs
+  directly; `SubmitHtmlPage` renders a self-contained success/error page.
+- Migration 009 `forms.allow_nojs` (admin checkbox): on the HTML-negotiated
+  path, `allow_nojs=0` (default) turns a missing/forged/too-young token into
+  an honest `400 javascript_required`; `allow_nojs=1` skips the check only
+  for a *missing* token. A filled honeypot always gets the generic success
+  page either way. The JSON/fetch path is unaffected.
 
-## Mail-setup wizard + installer (6a/6b) — condensed; see HISTORY
-- 6a: installed iff BOTH var/config.php and var/install.lock exist; CSRF wizard
-  writes config atomically then the lock; `Config::fromFile/load`, `DB_USER/
-  DB_PASS`, `generateSecret()`, `OSF_BASE_DIR`; written config sets
-  MAIL_ENABLED=0. 6b: `/admin/mail` SMTP write-back (atomic ConfigWriter,
-  write-only password, env-shadow notice), test send, `Mail\Deliverability
-  Checker` over an injectable `DnsResolver` (SPF/DKIM/DMARC green/amber + exact
-  record), installer done→mail handoff + dashboard nudge, `bin/osf mail:status`.
+## Dev tooling + upgrade path (chore/dev-serve-and-migrate) — condensed
+- `composer serve` → `public/dev-router.php` (PHP's built-in server 404s
+  static-looking paths otherwise); `config.process-timeout: 0`. `GET /`
+  redirects to `/admin/login` (installed) or `/install` (not).
+- `bin/osf migrate`: explicit, human-run counterpart to the silent
+  auto-migrate every `bin/osf` command already did at boot — checks
+  `Paths::isInstalled()`, reports each newly-applied migration or "Already
+  up to date.", idempotent. `MigrationRunner::pendingCount()` drives a
+  non-dismissible red dashboard banner when the schema is behind.
 
-## Admin / Turnstile / Mail relay — condensed; see HISTORY
-- Admin (5a–c): migrations 007/008 `admins`; argon2id, Base32/TOTP/recovery,
-  session seam, Csrf, AuthService (rate limits, timeouts, TOTP gate); strict CSP,
-  every screen works JS-off; forms/submissions CRUD, account/admins, 2FA.
-- Turnstile (4): optional PER FORM, both-or-neither; verifier iface + curl/fake;
-  fail-open; secret never exposed.
-- Mail relay (3): `MessageBuilder` (From always the service address, Reply-To the
-  submitter's valid email only); `DeliveryService` (sent/failed+backoff/dead at
-  MAIL_MAX_ATTEMPTS + retryDue); `bin/osf mail:retry|mail:test`.
+## Mail-setup, installer, admin auth, Turnstile, mail relay — condensed; see HISTORY
+- Installer: installed iff BOTH var/config.php and var/install.lock exist;
+  CSRF wizard writes config atomically then the lock.
+- Mail wizard (`/admin/mail`): SMTP write-back (atomic ConfigWriter,
+  write-only password), test send, SPF/DKIM/DMARC checker, `bin/osf
+  mail:status`.
+- Admin auth: migrations 007/008 `admins`; argon2id, Base32/TOTP/recovery,
+  session seam, Csrf, AuthService (rate limits, timeouts, TOTP gate); strict
+  CSP, every screen works JS-off; forms/submissions CRUD, account/admins, 2FA.
+- Turnstile: optional PER FORM, both-or-neither; fail-open; secret never
+  exposed.
+- Mail relay: `MessageBuilder` (From always the service address, Reply-To
+  the submitter's valid email only); `DeliveryService`
+  (sent/failed+backoff/dead at MAIL_MAX_ATTEMPTS + retryDue); `bin/osf
+  mail:retry|mail:test`.
 
 ## Submission pipeline order (enforced + tested)
 method/body size → field hygiene → form lookup by URL key → origin allowlist
 → per-IP then per-form rate limits → honeypot → token → Turnstile (optional)
 → email (syntax + MX/A) → store → delivery (terminal, always succeeds).
-Locked by SubmitPipelineOrderTest. The token stage's outcome now additionally
-depends on `SubmitContext::prefersHtml` and `form.allow_nojs` — see "No-JS
-submission policy" above; the stage order itself is unchanged.
+Locked by SubmitPipelineOrderTest. The token stage's outcome additionally
+depends on `SubmitContext::prefersHtml` and `form.allow_nojs`; the stage
+order itself is unchanged.
 
 ## What exists now
-0–6b as before, plus Increment 7: `public/embed/osf.js`, `src/Http/
-SubmitHtmlPage.php`; `Routes` content negotiation + `/embed/osf.js` and
-`/embed/manual.html` routes; `templates/admin/form_edit.php` embed panel +
-`FormsController` base-URL derivation; `tests/embed-manual.html`; tests
-`tests/Http/{SubmitHtmlResponseTest,EmbedAssetTest}`, `tests/Admin/
-EmbedPanelTest`. Plus fix/nojs-policy: migration 009 (`forms.allow_nojs`); the
-`allow_nojs` checkbox on form-edit; `SubmitContext::prefersHtml`; the
-`TokenStage` no-JS policy; the snippet's static `_osf_hp` honeypot field. Plus
-this sprint (chore/dev-serve-and-migrate): `public/dev-router.php`; `GET /`
-root redirect; `bin/osf migrate`; `MigrationRunner::pendingCount()`; the
-dashboard staleness banner — see "Dev tooling" / "Upgrade path" above. Only
-hard Composer dep remains phpmailer/phpmailer ^6.
+Everything through Increment 7 (embed artefact + no-JS fallback), plus
+chore/dev-serve-and-migrate (dev router, root redirect, `bin/osf migrate`,
+dashboard staleness banner) and this sprint's admin deletion (see "Admin
+deletion" above: `AdminRepository::deleteAdmin`; `AdminsController::
+deleteConfirm/delete`; `templates/admin/admin_delete_confirm.php`; the
+Admins-screen Delete action; `bin/osf admin:delete`). Only hard Composer dep
+remains phpmailer/phpmailer ^6.
 
 ## Known gaps / not built (by design)
-- Synthetic monitoring (8), zip packaging/release layout + production `.htaccess`
-  (front-controller rewrite + static cache headers) — later increments.
-  Migration-on-update is now solved for the manual case (`bin/osf migrate` +
-  dashboard banner, this sprint); what's still missing is any AUTOMATIC trigger
-  (e.g. a post-unzip hook) — out of scope until the release/packaging work.
-- Password RESET by email, roles/permissions, account deletion, audit log.
+- Synthetic monitoring (8), zip packaging/release layout + production
+  `.htaccess` (front-controller rewrite + static cache headers) — later
+  increments. Migration-on-update is solved for the manual case (`bin/osf
+  migrate` + dashboard banner); still missing any AUTOMATIC trigger (e.g. a
+  post-unzip hook) — out of scope until the release/packaging work.
+- Password RESET by email, roles/permissions, audit log. (Account deletion
+  itself is now built — see "Admin deletion" above; still no audit trail of
+  who deleted whom.)
 - File uploads / redirect success URLs (explicitly out of embed scope).
 - Real MySQL live-test, NativeSession `$_SESSION`, real SMTP/DNS, and the DOM
   behaviour of osf.js stay un-unit-tested (network/globals/no DOM harness);
@@ -161,7 +132,8 @@ hard Composer dep remains phpmailer/phpmailer ^6.
 None outstanding. QUESTIONS.md Increment 7 #1 (no-JS delivery vs the token
 stage) and #2 (osf.js size) were RESOLVED in fix/nojs-policy; the 6b
 branch/merge-order flag was already RESOLVED (6a/6b/7 merged to main via PRs
-#15/#16/#17). Nothing raised this sprint (chore/dev-serve-and-migrate).
+#15/#16/#17). Nothing raised in chore/dev-serve-and-migrate or this sprint
+(fix/admin-delete).
 
 ## Planned increment sequence (subject to revision)
 0. Skeleton. 1. Schema. 2. Pipeline. 3. SMTP relay. 4. Turnstile. 5a. Admin

@@ -70,6 +70,8 @@ try {
             exit(cmdFormTurnstile($db, $args));
         case 'admin:create':
             exit(cmdAdminCreate($db, $args));
+        case 'admin:delete':
+            exit(cmdAdminDelete($db, $args));
         case 'mail:retry':
             exit(cmdMailRetry($db, $config));
         case 'mail:test':
@@ -305,6 +307,45 @@ function cmdAdminCreate(Database $db, array $args): int
 
     fwrite(STDOUT, "Created admin #{$admin['id']} <{$admin['email']}> ({$admin['display_name']}).\n");
     fwrite(STDOUT, "Sign in at /admin/login\n");
+
+    return 0;
+}
+
+/**
+ * admin:delete ID
+ *
+ * Permanently deletes an administrator. Refuses to delete the last remaining
+ * ACTIVE admin (deleting an inactive one is always allowed). Unlike the web
+ * UI's delete confirmation, this does NOT ask for a password: shell access
+ * to run `bin/osf` is already a higher privilege than the admin panel
+ * itself, so re-proving a web password here would not add any real
+ * protection — the operator already has full control of the installation.
+ */
+function cmdAdminDelete(Database $db, array $args): int
+{
+    $id = $args[0] ?? null;
+    if ($id === null || !ctype_digit($id)) {
+        fwrite(STDERR, "admin:delete requires a numeric admin ID\n\n" . usage());
+        return 1;
+    }
+
+    $hasher = new PasswordHasher();
+    $repo = new AdminRepository($db, $hasher, new RecoveryCodes($hasher));
+
+    $target = $repo->findById((int) $id);
+    if ($target === null) {
+        fwrite(STDERR, "No admin found with ID {$id}\n");
+        return 1;
+    }
+
+    if ((int) $target['is_active'] === 1 && $repo->countActive() <= 1) {
+        fwrite(STDERR, "Refusing: \"{$target['email']}\" is the last active admin.\n");
+        return 1;
+    }
+
+    $repo->deleteAdmin((int) $id);
+
+    fwrite(STDOUT, "Deleted admin #{$id} <{$target['email']}> ({$target['display_name']}).\n");
 
     return 0;
 }
@@ -582,6 +623,7 @@ function usage(): string
       bin/osf form:turnstile ID --sitekey=KEY --secret=SECRET
       bin/osf form:turnstile ID --disable
       bin/osf admin:create --email=EMAIL --name=NAME
+      bin/osf admin:delete ID
       bin/osf mail:retry
       bin/osf mail:test --to=ADDRESS
       bin/osf mail:status
@@ -596,6 +638,9 @@ function usage(): string
         required) or --disable clears both; the secret is never exposed.
       admin:create prompts for the password interactively (hidden when a
         TTY is available); it must be at least 12 characters.
+      admin:delete permanently removes an admin; refuses the last active
+        admin. No password prompt — shell access is already the higher
+        privilege.
       mail:retry re-sends failed submissions whose backoff has elapsed
         (intended for a cPanel cron entry); it always exits 0.
       mail:status prints the mail config state (no secrets) and runs live

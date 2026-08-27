@@ -1000,3 +1000,50 @@
   suite green.
 - No new Composer dependencies. Nothing logged to QUESTIONS.md — no
   architecture/security/scope questions arose.
+
+## 2026-08-27 — Patch: admin deletion with guards
+- Branch: fix/admin-delete.
+- Architect ruling reversal: 5c had deferred admin deletion by design
+  (deactivation-only, see 5c entry below); this patch adds a guarded hard
+  delete alongside it. Deactivation remains the reversible option.
+- `AdminRepository::deleteAdmin(int $id): bool` — prepared `DELETE`,
+  returns whether a row was actually removed (`PDOStatement::rowCount()`).
+- `AdminsController`: new `deleteConfirm` (GET) / `delete` (POST) actions at
+  `/admin/admins/{id}/delete`. Three server-enforced guards, re-checked on
+  the POST regardless of what the GET step showed (so a forged POST can't
+  bypass them): target must exist; the last remaining ACTIVE admin can never
+  be deleted (deleting an INACTIVE admin is always allowed, whatever the
+  active count — checked first, mirroring the existing deactivate guard); an
+  admin can never delete their own account (checked second — structurally,
+  an HTTP-reachable "last active but not self" case can't occur, since the
+  acting admin must themselves be active to be logged in at all, so this
+  ordering only affects which message a simultaneous self+last-active hit
+  shows). The POST also re-verifies the ACTING admin's current password
+  (`PasswordHasher::verify`, same re-authentication pattern as
+  `AccountController`); a wrong password re-renders the confirmation screen
+  with a 401 and an error instead of redirecting.
+- New template `templates/admin/admin_delete_confirm.php`: shows the
+  target's email, states plainly that deletion is permanent/irreversible,
+  and the current-password field. `templates/admin/admins.php` gets a
+  "Delete" action per row, hidden for the signed-in admin's own row and for
+  the last active admin (same visibility rule the guards enforce).
+- `bin/osf admin:delete ID`: refuses the last active admin (deleting an
+  inactive one always allowed), prints what it deleted. Deliberately no
+  password prompt — shell access to run `bin/osf` is already a higher
+  privilege than the admin panel itself, documented inline and in the CLI
+  usage text.
+- README "Admin model" section rewritten: deletion documented with its
+  three guards, deactivation reframed as the reversible alternative
+  (previously said accounts are "never deleted").
+- Tests (+14, 429 total): `Auth/AdminRepositoryTest` (`deleteAdmin` removes
+  the row / returns false for an unknown id); `Admin/AccountAdminsHttpTest`
+  guard matrix (delete button hidden for self and for the last active admin;
+  self-delete refused by a forged POST even with a second active admin
+  present; last-active-admin delete refused server-side with its own
+  message; an inactive admin is always deletable; wrong current password
+  re-renders 401 with an error and does not delete; confirmation screen
+  shows the target's email and states permanence; success path removes the
+  row, redirects, and flashes); `Cli/CliAdminTest` (`admin:delete` happy
+  path, refuses the last active admin, deleting inactive always allowed,
+  refuses an unknown id, refuses a non-numeric id). Full suite green.
+- No new Composer dependencies. Nothing logged to QUESTIONS.md.

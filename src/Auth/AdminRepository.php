@@ -292,6 +292,20 @@ final class AdminRepository
     }
 
     /**
+     * Permanently remove an admin. Returns true when a row was deleted.
+     *
+     * Callers (AdminsController, `bin/osf admin:delete`) are responsible for
+     * the availability/self-delete guards; this method performs the delete
+     * unconditionally once called.
+     */
+    public function deleteAdmin(int $id): bool
+    {
+        $stmt = $this->db->execute('DELETE FROM admins WHERE id = :id', ['id' => $id]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
      * Cast a raw row into typed PHP values.
      *
      * @param array<string, mixed> $row

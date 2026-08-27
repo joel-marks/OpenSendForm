@@ -189,8 +189,8 @@ enhancements (theme toggle, click-to-copy, QR code, segmented 2FA inputs).
   password plus a new one, at least 12 characters, twice; your session id is
   rotated on success). Reach it from your name in the top nav.
 - **Admins** (`/admin/admins`) — the admin roster (email, name, 2FA and active
-  badges, last login); add a new admin with an initial password; deactivate or
-  reactivate accounts.
+  badges, last login); add a new admin with an initial password; deactivate,
+  reactivate, or permanently delete accounts.
 
 ### Admin model
 
@@ -206,16 +206,30 @@ design; it keeps a self-hosted, single-site tool simple.
   Add an admin**, setting an initial password (≥ 12 characters). Share it over
   a secure channel and ask the new admin to change it from their **Account**
   screen after first sign-in.
-- **Retiring admins** — accounts are never deleted (deferred by design);
-  instead they are **deactivated** from the Admins screen. A deactivated admin
-  can no longer sign in, and any live session they hold is invalidated on its
-  next request. Reactivate them the same way. A safety guard prevents
-  deactivating the **last remaining active admin** (including yourself), so an
-  installation can never lock itself out of its own admin area.
+- **Retiring admins** — the reversible option is to **deactivate** an account
+  from the Admins screen. A deactivated admin can no longer sign in, and any
+  live session they hold is invalidated on its next request. Reactivate them
+  the same way. A safety guard prevents deactivating the **last remaining
+  active admin** (including yourself), so an installation can never lock
+  itself out of its own admin area.
+- **Deleting admins** — an admin can also be **permanently deleted** from the
+  same screen. Deletion is irreversible, so it is guarded more heavily than
+  deactivation: an admin can never delete their own account; the **last
+  remaining active admin** can never be deleted (deleting an *inactive* admin
+  is always allowed, whatever the active count); and the confirmation step
+  requires the acting admin to re-enter their own current password, states
+  plainly that the action cannot be undone, and shows the target's email so
+  there is no ambiguity about which account is being removed. All three
+  guards are enforced server-side — the delete button is also hidden wherever
+  a guard would refuse it, but a forged request cannot bypass the check.
+  `bin/osf admin:delete ID` offers the same operation from the command line
+  (still refuses the last active admin) without a password prompt, since
+  shell access to the server is already a higher privilege than the admin
+  panel itself.
 - **Sensitive changes are re-authenticated** — changing an email or password,
-  or disabling 2FA, always requires the current password (and, for disabling
-  2FA, a current authenticator code). Every action is a CSRF-protected POST
-  with flash feedback.
+  disabling 2FA, or deleting an admin always requires the current password
+  (and, for disabling 2FA, a current authenticator code). Every action is a
+  CSRF-protected POST with flash feedback.
 
 ### Theming
 

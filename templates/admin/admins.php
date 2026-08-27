@@ -17,7 +17,7 @@ use function OpenSendForm\Admin\h;
 <p>
     Every admin is a co-operator of this installation: all admins see all forms
     and all submissions. There are no roles. Retire an admin by deactivating
-    them — accounts are never deleted.
+    them, or delete the account permanently.
 </p>
 
 <div class="osf-table-wrap">
@@ -38,8 +38,11 @@ use function OpenSendForm\Admin\h;
             $id = (int) $row['id'];
             $active = (int) $row['is_active'] === 1;
             $isSelf = $id === $currentAdminId;
-            // The last remaining active admin can never be deactivated.
+            // The last remaining active admin can never be deactivated or deleted.
             $canDeactivate = $active && $activeCount > 1;
+            // Deleting an inactive admin is always allowed; an active one only
+            // when they are not the last active admin. Never yourself, either way.
+            $canDelete = !$isSelf && ($active ? $activeCount > 1 : true);
             ?>
             <tr>
                 <td>
@@ -77,6 +80,9 @@ use function OpenSendForm\Admin\h;
                             <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
                             <button type="submit" class="secondary">Reactivate</button>
                         </form>
+                    <?php endif; ?>
+                    <?php if ($canDelete): ?>
+                        <a href="/admin/admins/<?= h((string) $id) ?>/delete" role="button" class="secondary outline">Delete</a>
                     <?php endif; ?>
                 </td>
             </tr>

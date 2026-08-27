@@ -56,6 +56,21 @@ final class AdminRepositoryTest extends TestCase
         self::assertNotNull($this->repo->findById($admin['id'])['last_login_at']);
     }
 
+    public function testDeleteAdminRemovesRow(): void
+    {
+        $admin = $this->repo->createAdmin('boss@example.com', 'Boss', 'a-strong-password');
+
+        $deleted = $this->repo->deleteAdmin($admin['id']);
+
+        self::assertTrue($deleted);
+        self::assertNull($this->repo->findById($admin['id']));
+    }
+
+    public function testDeleteAdminReturnsFalseForUnknownId(): void
+    {
+        self::assertFalse($this->repo->deleteAdmin(999));
+    }
+
     public function testUpdatePasswordHash(): void
     {
         $admin = $this->repo->createAdmin('boss@example.com', 'Boss', 'a-strong-password');

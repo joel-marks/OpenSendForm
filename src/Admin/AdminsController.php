@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use OpenSendForm\Auth\AdminRepository;
 use OpenSendForm\Auth\AuthService;
 use OpenSendForm\Auth\Csrf;
+use OpenSendForm\Auth\PasswordHasher;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -17,13 +18,19 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * OpenSendForm is single-tenant: every admin is a co-operator of the one
  * installation and sees all forms and submissions. This screen lists the
- * roster, lets any admin add another, and deactivates or reactivates them.
+ * roster, lets any admin add another, deactivates or reactivates them, and
+ * can permanently delete one.
  *
- * There is no delete action (deferred by design) — retirement is deactivation.
- * A hard guard protects availability: the last remaining ACTIVE admin can
- * never be deactivated (including deactivating yourself when you are the last
- * one), so an installation can never be locked out of its own admin area. The
- * guard is enforced server-side; the list also hides the button in that case.
+ * Two hard guards protect availability, enforced server-side regardless of
+ * what the UI offered (a forged POST cannot bypass them):
+ *  - the last remaining ACTIVE admin can never be deactivated OR deleted
+ *    (deleting an INACTIVE admin is always allowed, even if they were once
+ *    the only admin);
+ *  - an admin can never deactivate or delete their OWN account.
+ * Deletion additionally re-authenticates: the acting admin must re-enter
+ * their own CURRENT password on the confirmation step, and the confirmation
+ * screen states plainly that deletion is permanent. Deactivation remains the
+ * reversible alternative for retiring an admin without erasing the account.
  */
 final class AdminsController
 {
@@ -190,6 +197,124 @@ final class AdminsController
         return self::redirect($response, '/admin/admins');
     }
 
+    // --- Delete -------------------------------------------------------------
+
+    /**
+     * Confirmation step: shows the target's email, states that deletion is
+     * permanent, and asks the acting admin to re-enter their own current
+     * password. Guarded up front so a forged link to this screen for an
+     * ineligible target simply bounces back with an explanation instead of
+     * rendering a form that could never succeed.
+     */
+    public static function deleteConfirm(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $admin = self::auth($c)->currentAdmin();
+        if ($admin === null) {
+            return self::redirect($response, '/admin/login');
+        }
+
+        $id = (int) ($args['id'] ?? 0);
+        $target = self::admins($c)->findById($id);
+        $guardError = self::deletionGuardError($c, $admin, $target, $id);
+        if ($guardError !== null) {
+            self::flash($c)->error($guardError);
+
+            return self::redirect($response, '/admin/admins');
+        }
+
+        return self::renderDeleteConfirm($c, $response, $target);
+    }
+
+    /**
+     * Performs the delete. Every guard is re-checked here regardless of what
+     * the confirmation screen showed, so a forged POST (skipping the GET
+     * step, or targeting an id the UI never offered) cannot bypass them.
+     */
+    public static function delete(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $admin = self::auth($c)->currentAdmin();
+        if ($admin === null) {
+            return self::redirect($response, '/admin/login');
+        }
+
+        $data = self::formData($request);
+        if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::flash($c)->error('Your session expired. Please try again.');
+
+            return self::redirect($response, '/admin/admins');
+        }
+
+        $id = (int) ($args['id'] ?? 0);
+        $target = self::admins($c)->findById($id);
+        $guardError = self::deletionGuardError($c, $admin, $target, $id);
+        if ($guardError !== null) {
+            self::flash($c)->error($guardError);
+
+            return self::redirect($response, '/admin/admins');
+        }
+
+        $password = (string) ($data['current_password'] ?? '');
+        if (!self::hasher($c)->verify($password, (string) $admin['password_hash'])) {
+            return self::renderDeleteConfirm($c, $response, $target, 'That is not your current password.', 401);
+        }
+
+        self::admins($c)->deleteAdmin($id);
+        self::flash($c)->success('Deleted "' . $target['email'] . '". This cannot be undone.');
+
+        return self::redirect($response, '/admin/admins');
+    }
+
+    /**
+     * Shared guard logic for both the confirmation screen and the delete
+     * action itself: target must exist, must not be the last remaining
+     * active admin (deleting an inactive one is always allowed, whatever the
+     * active count — checked first, matching the deactivate guard), and must
+     * not be the acting admin themselves.
+     *
+     * @param array<string, mixed>      $admin  The acting (signed-in) admin.
+     * @param array<string, mixed>|null $target The admin being deleted.
+     */
+    private static function deletionGuardError(ContainerInterface $c, array $admin, ?array $target, int $id): ?string
+    {
+        if ($target === null) {
+            return 'That admin no longer exists.';
+        }
+        if ((int) $target['is_active'] === 1 && self::admins($c)->countActive() <= 1) {
+            return 'You cannot delete the last active admin.';
+        }
+        if ($id === (int) $admin['id']) {
+            return 'You cannot delete your own account.';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $target
+     */
+    private static function renderDeleteConfirm(
+        ContainerInterface $c,
+        ResponseInterface $response,
+        array $target,
+        string $error = '',
+        int $status = 200
+    ): ResponseInterface {
+        return AdminView::renderPage($c, $response, 'admin_delete_confirm', [
+            'title'       => 'Delete admin',
+            'targetId'    => (int) $target['id'],
+            'targetEmail' => (string) $target['email'],
+            'error'       => $error,
+        ], 'admins', $status);
+    }
+
     // --- Container accessors & helpers ------------------------------------
 
     private static function auth(ContainerInterface $c): AuthService
@@ -212,6 +337,14 @@ final class AdminsController
     {
         /** @var AdminRepository $s */
         $s = $c->get(AdminRepository::class);
+
+        return $s;
+    }
+
+    private static function hasher(ContainerInterface $c): PasswordHasher
+    {
+        /** @var PasswordHasher $s */
+        $s = $c->get(PasswordHasher::class);
 
         return $s;
     }
