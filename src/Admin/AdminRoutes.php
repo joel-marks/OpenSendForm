@@ -74,6 +74,10 @@ final class AdminRoutes
                 ->add($auth);
             $group->post('/admins/{id}/reactivate', self::handlerWithArgs($container, [AdminsController::class, 'reactivate']))
                 ->add($auth);
+            $group->get('/admins/{id}/delete', self::handlerWithArgs($container, [AdminsController::class, 'deleteConfirm']))
+                ->add($auth);
+            $group->post('/admins/{id}/delete', self::handlerWithArgs($container, [AdminsController::class, 'delete']))
+                ->add($auth);
 
             // Email (mail-setup wizard: SMTP + deliverability).
             $group->get('/mail', self::handler($container, [MailController::class, 'index']))

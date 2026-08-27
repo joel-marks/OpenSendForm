@@ -350,6 +350,121 @@ final class AccountAdminsHttpTest extends TestCase
         self::assertSame(302, $this->get('/admin')->getStatusCode());
     }
 
+    // --- Delete: guard matrix ---------------------------------------------
+
+    public function testDeleteButtonHiddenForSelfAndShownForOthers(): void
+    {
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $admin = $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $body = (string) $this->get('/admin/admins')->getBody();
+        self::assertStringNotContainsString('/admin/admins/' . $admin['id'] . '/delete', $body);
+        self::assertStringContainsString('/admin/admins/' . $second['id'] . '/delete', $body);
+    }
+
+    public function testSelfDeleteRefusedEvenByForgedPost(): void
+    {
+        $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $admin = $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $csrf = $this->csrfFrom($this->get('/admin/admins'));
+        $this->post('/admin/admins/' . $admin['id'] . '/delete', [
+            '_csrf'            => $csrf,
+            'current_password' => self::PASSWORD,
+        ]);
+
+        self::assertNotNull($this->admins->findById($admin['id']));
+        self::assertStringContainsString(
+            'cannot delete your own account',
+            (string) $this->get('/admin/admins')->getBody()
+        );
+    }
+
+    public function testLastActiveAdminCannotBeDeletedServerSide(): void
+    {
+        $admin = $this->createAndLogin('boss@example.com', 'The Boss');
+
+        // Button is hidden in the UI…
+        $body = (string) $this->get('/admin/admins')->getBody();
+        self::assertStringNotContainsString('/admin/admins/' . $admin['id'] . '/delete', $body);
+
+        // …and the action is refused server-side even if forced, with the
+        // availability-guard message (not the generic self-delete one).
+        $csrf = $this->csrfFrom($this->get('/admin/admins'));
+        $this->post('/admin/admins/' . $admin['id'] . '/delete', [
+            '_csrf'            => $csrf,
+            'current_password' => self::PASSWORD,
+        ]);
+        self::assertNotNull($this->admins->findById($admin['id']));
+        self::assertStringContainsString(
+            'cannot delete the last active admin',
+            (string) $this->get('/admin/admins')->getBody()
+        );
+    }
+
+    public function testInactiveAdminIsAlwaysDeletable(): void
+    {
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $this->admins->setActive($second['id'], false);
+        $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $csrf = $this->csrfFrom($this->get('/admin/admins'));
+        $response = $this->post('/admin/admins/' . $second['id'] . '/delete', [
+            '_csrf'            => $csrf,
+            'current_password' => self::PASSWORD,
+        ]);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertNull($this->admins->findById($second['id']));
+    }
+
+    public function testDeleteRejectsWrongPassword(): void
+    {
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $csrf = $this->csrfFrom($this->get('/admin/admins/' . $second['id'] . '/delete'));
+        $response = $this->post('/admin/admins/' . $second['id'] . '/delete', [
+            '_csrf'            => $csrf,
+            'current_password' => 'wrong-password',
+        ]);
+
+        self::assertSame(401, $response->getStatusCode());
+        self::assertStringContainsString('That is not your current password.', (string) $response->getBody());
+        self::assertNotNull($this->admins->findById($second['id']));
+    }
+
+    public function testDeleteConfirmationScreenShowsTargetEmailAndPermanenceNotice(): void
+    {
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $body = (string) $this->get('/admin/admins/' . $second['id'] . '/delete')->getBody();
+        self::assertStringContainsString('second@example.com', $body);
+        self::assertStringContainsString('cannot be undone', $body);
+        self::assertStringContainsString('current_password', $body);
+    }
+
+    public function testDeleteSuccessRemovesRowAndFlashes(): void
+    {
+        $second = $this->admins->createAdmin('second@example.com', 'Second', self::PASSWORD);
+        $this->createAndLogin('boss@example.com', 'The Boss');
+
+        $csrf = $this->csrfFrom($this->get('/admin/admins/' . $second['id'] . '/delete'));
+        $response = $this->post('/admin/admins/' . $second['id'] . '/delete', [
+            '_csrf'            => $csrf,
+            'current_password' => self::PASSWORD,
+        ]);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/admin/admins', $response->getHeaderLine('Location'));
+        self::assertNull($this->admins->findById($second['id']));
+        $body = (string) $this->get('/admin/admins')->getBody();
+        self::assertStringContainsString('Deleted', $body);
+        self::assertStringContainsString('second@example.com', $body);
+        self::assertStringContainsString('This cannot be undone.', $body);
+    }
+
     // --- Inactive admin login & live-session invalidation ----------------
 
     public function testInactiveAdminCannotLogInGenerically(): void

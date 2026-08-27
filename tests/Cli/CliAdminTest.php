@@ -92,6 +92,60 @@ final class CliAdminTest extends TestCase
         self::assertStringContainsString('already exists', $result['stderr']);
     }
 
+    // --- admin:delete -------------------------------------------------
+
+    public function testDeletesAdminById(): void
+    {
+        $this->repo()->createAdmin('boss@example.com', 'Boss', 'a-strong-password');
+        $target = $this->repo()->createAdmin('second@example.com', 'Second', 'a-strong-password');
+
+        $result = $this->osf(['admin:delete', (string) $target['id']], '');
+
+        self::assertSame(0, $result['code'], $result['stderr']);
+        self::assertStringContainsString('Deleted admin #' . $target['id'], $result['stdout']);
+        self::assertStringContainsString('second@example.com', $result['stdout']);
+        self::assertNull($this->repo()->findById($target['id']));
+    }
+
+    public function testRefusesLastActiveAdmin(): void
+    {
+        $solo = $this->repo()->createAdmin('boss@example.com', 'Boss', 'a-strong-password');
+
+        $result = $this->osf(['admin:delete', (string) $solo['id']], '');
+
+        self::assertSame(1, $result['code']);
+        self::assertStringContainsString('last active admin', $result['stderr']);
+        self::assertNotNull($this->repo()->findById($solo['id']));
+    }
+
+    public function testDeletingInactiveAdminIsAlwaysAllowed(): void
+    {
+        $this->repo()->createAdmin('boss@example.com', 'Boss', 'a-strong-password');
+        $ghost = $this->repo()->createAdmin('ghost@example.com', 'Ghost', 'a-strong-password');
+        $this->repo()->setActive($ghost['id'], false);
+
+        $result = $this->osf(['admin:delete', (string) $ghost['id']], '');
+
+        self::assertSame(0, $result['code'], $result['stderr']);
+        self::assertNull($this->repo()->findById($ghost['id']));
+    }
+
+    public function testRefusesUnknownId(): void
+    {
+        $result = $this->osf(['admin:delete', '999'], '');
+
+        self::assertSame(1, $result['code']);
+        self::assertStringContainsString('No admin found', $result['stderr']);
+    }
+
+    public function testRefusesNonNumericId(): void
+    {
+        $result = $this->osf(['admin:delete', 'not-a-number'], '');
+
+        self::assertSame(1, $result['code']);
+        self::assertStringContainsString('requires a numeric admin ID', $result['stderr']);
+    }
+
     private function repo(): AdminRepository
     {
         $hasher = new PasswordHasher();
