@@ -126,6 +126,20 @@ authenticated SMTP to the site owner.
   viewport; only their `-inner container` children align to the content
   column. NO sidebar/tree/search/breadcrumbs. "Account" is not a nav item —
   it's a menu entry (see below). Both rows wrap on narrow viewports.
+  fix/tab-row-surface (micro-patch) investigated a reported "tab row renders
+  grey/raised" defect: the `.osf-header`/`.osf-tabnav` CSS rules were already
+  correct (`--osf-bg-inset`/`--osf-bg` as ruled) and live-verified (Playwright,
+  both themes) to compute exactly those surfaces — no shadowing rule, shared
+  wrapper, or specificity issue existed. The one real bug was a stale doc
+  comment above `.osf-header` in `admin.css` left over from v2's "same
+  surface" reading, claiming both rows sat on `--osf-bg-raised`; corrected.
+  `DesignSystemTest`'s header-surface assertions were loose enough that a
+  regression to `--osf-bg-raised` on the tab row could have slipped past a
+  naive `assertStringContainsString('--osf-bg', ...)` (it's a substring of
+  `--osf-bg-raised`) — hardened to an exact-token regex, an explicit
+  no-raised-surface check on the top row, a sibling-adjacency check (no
+  wrapper can sit between the rows), and a single-definition check per
+  selector.
 - **Account menu**: the admin name is a `<details class="osf-account-menu">
   <summary>` dropdown trigger (native, no JS, CSP-safe — GitHub's own
   pattern) with a vendored `chevron-down` Lucide icon (rotates on `[open]`
