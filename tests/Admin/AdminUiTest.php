@@ -106,6 +106,32 @@ final class AdminUiTest extends TestCase
         // A delivered submission's status is never in the problem list body.
     }
 
+    public function testStatCardsCarryStateModifierClasses(): void
+    {
+        $this->login();
+        $body = (string) $this->get('/admin')->getBody();
+
+        // Each stat card pairs the base class with its state accent modifier,
+        // in the fixed order the four cards render: Active forms (success),
+        // Submissions today (accent), Failed/retrying (warning), Dead (danger).
+        self::assertMatchesRegularExpression(
+            '/<article class="osf-stat osf-stat--success">.*?Active forms/s',
+            $body
+        );
+        self::assertMatchesRegularExpression(
+            '/<article class="osf-stat osf-stat--accent">.*?Submissions today/s',
+            $body
+        );
+        self::assertMatchesRegularExpression(
+            '/<article class="osf-stat osf-stat--warning">.*?Failed \(retrying\)/s',
+            $body
+        );
+        self::assertMatchesRegularExpression(
+            '/<article class="osf-stat osf-stat--danger">.*?Dead \(gave up\)/s',
+            $body
+        );
+    }
+
     public function testActiveFormsCountExcludesDisabled(): void
     {
         $this->forms->createForm('One', 'o@example.com', ['https://o.com']);

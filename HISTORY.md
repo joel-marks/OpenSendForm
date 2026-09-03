@@ -1480,3 +1480,63 @@
   prompt's own item 2 (strengthen the test) and item 1's "or fix so the
   computed background is exactly var(--osf-bg)" (already true, now also
   proven by the harness rather than just asserted).
+
+## 2026-09-03 — Micro-patch: header surfaces pinned + dashboard stat accents (fix/header-surfaces-pinned)
+- Branch: fix/header-surfaces-pinned (off latest main).
+- Re-investigated the reported "tab row renders grey" defect from the DOM
+  finding `nav.osf-tabnav > div.osf-tabnav-inner.container`,
+  `header.osf-header > div.osf-header-inner.container`, `main.container`.
+  Identified painter: **none** — confirmed for a second time (after
+  fix/tab-row-surface) via a live headless-Chromium (puppeteer-core driving
+  the system `chromium` package over CDP) render of the real app through
+  `public/dev-router.php` + the actual front controller, logged in as a
+  real admin, computed styles read with `getComputedStyle(...).backgroundColor`
+  before and after this patch. `.container` already declared no background;
+  `.osf-header-inner`/`.osf-tabnav-inner`/`.osf-tab-link` had no background
+  rule at all and simply inherited the correct parent surface via the
+  initial `transparent` value — not a bug, just unpinned. BEFORE and AFTER
+  tables (identical, confirming no visual regression):
+
+  | selector                    | before             | after               |
+  |------------------------------|--------------------|----------------------|
+  | body                         | rgb(13, 17, 23)     | rgb(13, 17, 23)      |
+  | .osf-header                  | rgb(1, 4, 9)        | rgb(1, 4, 9)         |
+  | .osf-header-inner            | rgba(0, 0, 0, 0)    | rgba(0, 0, 0, 0)     |
+  | .osf-tabnav                  | rgb(13, 17, 23)     | rgb(13, 17, 23)      |
+  | .osf-tabnav-inner            | rgba(0, 0, 0, 0)    | rgba(0, 0, 0, 0)     |
+  | .osf-tab-link (active)       | rgba(0, 0, 0, 0)    | rgba(0, 0, 0, 0)     |
+  | main                         | rgba(0, 0, 0, 0)    | rgba(0, 0, 0, 0)     |
+
+  (dark theme; rgb(13,17,23) = `--osf-bg`, rgb(1,4,9) = `--osf-bg-inset`,
+  rgba(0,0,0,0) = the CSS initial `transparent`, i.e. "shows the parent".)
+- Pinned `admin.css` as defence-in-depth regardless: `.osf-header-inner`,
+  `.osf-tabnav-inner`, `.osf-tab-link` (base/hover/`[aria-current="page"]`)
+  now explicitly declare `background: transparent` rather than relying on
+  the initial value, so a future rule addition can't silently shadow
+  `.osf-header`'s/`.osf-tabnav`'s surface. `.container`/`main.container`
+  were already background-free; no stale declaration existed to remove.
+- Dashboard stat cards (`templates/admin/dashboard.php`): each `.osf-stat`
+  article gained a state modifier class (`osf-stat--success` / `--accent` /
+  `--warning` / `--danger` for Active forms / Submissions today / Failed
+  (retrying) / Dead (gave up)); `admin.css` adds the four modifiers as a
+  3px `border-left` in the state token plus a matching `.osf-stat-value`
+  colour tint — no filled background, the card keeps its existing
+  `--osf-bg-raised`/`--osf-border-muted`/`--osf-radius-lg` surface.
+- Tests: `DesignSystemTest::testContainerIsLayoutOnlyAndHeaderBlockChildrenArePinnedTransparent`
+  (new) asserts `.container`/`main.container` carry no background and the
+  five pinned selectors above declare exactly `background: transparent`;
+  `DesignSystemTest::testDashboardStatCardsHaveStateAccentBorderAndValueTintOnly`
+  (new) asserts each modifier's border/value-tint token and that no
+  modifier adds a `background`; `AdminUiTest::testStatCardsCarryStateModifierClasses`
+  (new) renders `/admin` and asserts the four cards carry their modifier
+  class in the fixed render order. `testNoHardcodedColoursOutsideTokens`
+  still passes (all new declarations are `--osf-*` tokens or the literal
+  `transparent` keyword, which the grep doesn't forbid). Full suite green:
+  458 tests, 3080 assertions (455 + 3 new).
+- Verification housekeeping: created a throwaway admin
+  (`verify-render@example.com`) via `bin/osf admin:create` to drive the
+  Chromium render against a real login session, deleted it afterwards via
+  `bin/osf admin:delete`, and cleared the `rate_counters` rows the repeated
+  headless login attempts accumulated in the shared dev SQLite DB (dev data
+  only, not app code). Nothing logged to QUESTIONS.md — no architecture/
+  security/scope blockers this sprint.

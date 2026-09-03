@@ -153,6 +153,7 @@ main.container {
     gap: var(--osf-space-2) var(--osf-space-4);
     padding-top: var(--osf-space-2);
     padding-bottom: var(--osf-space-2);
+    background: transparent;    /* pinned: never shadow .osf-header's surface */
 }
 
 .osf-brand {
@@ -279,6 +280,7 @@ main.container {
     display: flex;
     flex-wrap: wrap;           /* tabs wrap on narrow viewports */
     gap: 0 var(--osf-space-4);
+    background: transparent;   /* pinned: never shadow .osf-tabnav's surface */
 }
 
 .osf-tab-link {
@@ -290,11 +292,13 @@ main.container {
     font-size: 0.9rem;
     font-weight: 500;
     border-bottom: 2px solid transparent;
+    background: transparent;   /* pinned: no raised surface, active/hover too */
 }
 
 .osf-tab-link:hover {
     color: var(--osf-text);
     border-bottom-color: var(--osf-border);
+    background: transparent;
     text-decoration: none;
 }
 
@@ -302,6 +306,7 @@ main.container {
     color: var(--osf-text);
     font-weight: 600;
     border-bottom-color: var(--osf-tab-active);
+    background: transparent;
 }
 
 /* Icon-only theme toggle: the visible glyph is driven by data-theme-mode
@@ -864,3 +869,15 @@ section > h1:first-child { margin-top: 0; }
     color: var(--osf-text-muted);
     font-size: 0.85rem;
 }
+
+/* State accents: a 3px left border + a tinted value, no filled background. */
+
+.osf-stat--success { border-left: 3px solid var(--osf-success); }
+.osf-stat--accent { border-left: 3px solid var(--osf-accent); }
+.osf-stat--warning { border-left: 3px solid var(--osf-warning); }
+.osf-stat--danger { border-left: 3px solid var(--osf-danger); }
+
+.osf-stat--success .osf-stat-value { color: var(--osf-success); }
+.osf-stat--accent .osf-stat-value { color: var(--osf-accent); }
+.osf-stat--warning .osf-stat-value { color: var(--osf-warning); }
+.osf-stat--danger .osf-stat-value { color: var(--osf-danger); }
