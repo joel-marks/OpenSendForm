@@ -238,10 +238,11 @@ final class DesignSystemTest extends TestCase
         }
     }
 
-    // --- Header: two rows, GitHub-aligned surfaces, one hairline under the
-    // second (fix/5d-polish-v3, architect round 3) ------------------------
+    // --- Header: two rows on ONE shared surface, one hairline under the
+    // second (architect art-direction ruling, reverses fix/5d-polish-v3's
+    // surface split) --------------------------------------------------------
 
-    public function testHeaderIsTwoRowsOnGithubAlignedSurfacesWithOneHairlineUnderTheSecond(): void
+    public function testHeaderIsTwoRowsOnOneSharedSurfaceWithOneHairlineUnderTheSecond(): void
     {
         $css = self::read('public/assets/admin.css');
 
@@ -267,18 +268,16 @@ final class DesignSystemTest extends TestCase
 
         self::assertMatchesRegularExpression('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, '.osf-tabnav rule not found');
         preg_match('/\.osf-tabnav\s*\{([^}]*)\}/s', $css, $tabnavBlock);
-        // Tab row: page background --osf-bg, distinct from the top row. Match
-        // the exact token (not followed by "-raised"/"-inset"/"-overlay") —
-        // assertStringContainsString('--osf-bg', ...) alone would also pass
-        // for "--osf-bg-raised", which is exactly the regression this test
-        // must catch.
+        // Tab row: SAME surface as the top row, --osf-bg-inset — the two rows
+        // are one shared block, not two distinct surfaces. Match the exact
+        // token (not followed by "-raised"/"-overlay") so a stray raised
+        // surface can't slip past a loose substring check.
         self::assertMatchesRegularExpression(
-            '/background:\s*var\(--osf-bg\)/',
+            '/background:\s*var\(--osf-bg-inset\)/',
             $tabnavBlock[1],
-            'Tab row background must resolve to exactly var(--osf-bg)'
+            'Tab row background must resolve to exactly var(--osf-bg-inset), matching the top row'
         );
         self::assertStringNotContainsString('--osf-bg-raised', $tabnavBlock[1]);
-        self::assertStringNotContainsString('--osf-bg-inset', $tabnavBlock[1]);
         self::assertStringContainsString(
             'border-bottom',
             $tabnavBlock[1],
@@ -434,7 +433,7 @@ final class DesignSystemTest extends TestCase
     // --- Header-block surfaces pinned (fix/header-surfaces-pinned) ---------
 
     /**
-     * Defence-in-depth on top of testHeaderIsTwoRowsOnGithubAlignedSurfaces...:
+     * Defence-in-depth on top of testHeaderIsTwoRowsOnOneSharedSurfaceWithOneHairlineUnderTheSecond:
      * the generic .container rule must never carry a background (layout only),
      * and every child wrapper between .osf-header/.osf-tabnav and their tab
      * links must be pinned to transparent so nothing can paint a raised
