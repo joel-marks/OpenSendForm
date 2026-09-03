@@ -1540,3 +1540,103 @@
   headless login attempts accumulated in the shared dev SQLite DB (dev data
   only, not app code). Nothing logged to QUESTIONS.md — no architecture/
   security/scope blockers this sprint.
+
+## 2026-09-03 — fix/tabnav-grey-and-stat-tones: Firefox pixel diagnostic, versioned assets, stat-tone restyle
+- Branch: fix/tabnav-grey-and-stat-tones (off main @ 0c6d3f5, after PR #27).
+  No new Composer dependencies (authorised: none). Playwright added as a
+  dev-only npm devDependency (authorised for this task); Firefox obtained via
+  `npx playwright install firefox --with-deps`. Node/npm exist only in the dev
+  container — production still has no Node/Docker/build step.
+- TASK 1 — DIAGNOSTIC (real Firefox, painted pixels, VERDICT): the operator
+  kept reporting `.osf-tabnav` (row 2) rendering GREY/raised in Firefox on
+  macOS (dark) after PRs #26 and #27, while two prior passes verified the CSS
+  as correct only via headless Chromium / CSS-text review. Since getComputedStyle
+  reports the DECLARED value, not the COMPOSITED pixel, this pass sampled the
+  ACTUAL painted pixels. Method: `composer serve` against the seeded dev DB
+  (a `diag@example.com` admin + two forms + failed/dead submissions); a
+  Playwright script driving the REAL Firefox engine logged in, loaded `/admin`
+  in BOTH dark and light, screenshotted the header, and read pixels back
+  through the browser's own PNG decoder + a canvas (true composited pixels, no
+  extra decode dep). Sampled multiple points inside row 1 (`.osf-header`) and
+  row 2 (`.osf-tabnav`) away from text/icons/borders, comparing each to the
+  token hex resolved from tokens.css AT RUNTIME. Also dumped
+  getComputedStyle(background-color) for html/body/header/header-inner/tabnav/
+  tabnav-inner + the tabnav→body ancestor chain, and walked `elementsFromPoint`
+  at several coords inside the row.
+  FINDINGS: every sampled pixel matched its token EXACTLY in both themes —
+  dark: row 1 `#010409` (`--osf-bg-inset`), row 2 `#0d1117` (`--osf-bg`);
+  light: row 1 `#f6f8fa`, row 2 `#ffffff`. NO `--osf-bg-raised` (`#151b23`, the
+  "grey") was painted anywhere. The elementsFromPoint walk showed only the
+  transparent `.osf-tabnav-inner.container` over the `nav.osf-tabnav`
+  (`--osf-bg`) over body — no sticky/fixed overlay, no wrapper between the
+  rows, no translucent-border compositing, no Firefox `<nav>`/`<details>`
+  default surface. Each explicitly-listed alternative hypothesis was ruled out
+  by the walk. VERDICT (Task 1d): the code is PROVEN CORRECT on a clean Firefox
+  profile; the operator's grey is STALE CACHED CSS (a pre-fix admin.css served
+  from Firefox's disk cache). Task 2 is the structural elimination.
+- TASK 2 — VERSIONED ASSET URLS (structural cache elimination): added one
+  shared helper `OpenSendForm\Admin\asset($path)` (src/Admin/helpers.php) that
+  appends `?v=<Version::STRING>` (sourced from src/Version.php — no hand-typed
+  version anywhere). Both layouts (templates/admin/layout.php,
+  templates/install/layout.php) now emit every `/assets/` `<link>`/`<script>`
+  through it: theme-init.js, tokens.css, admin.css, admin.js, install.js and
+  the admin layout's extraScripts loop (qrcode.js). Embed assets
+  (public/embed/*) left untouched (out of scope). The dev-router and Apache
+  both serve the file for `…?v=X` (the query is ignored for file resolution),
+  verified live (`/assets/admin.css?v=0.1.0` → 200 text/css). A released
+  CSS/JS change can now never be served stale after an upgrade.
+- TASK 3 — REGRESSION SCRIPT: the Task-1 pixel check is committed as
+  `tests/browser/header-surface-check.mjs` (clearly separated from PHPUnit,
+  NOT wired into `composer test`/CI — it needs a ~90 MB Firefox download). Its
+  header documents how to run it and its env overrides (OSF_BASE_URL /
+  OSF_ADMIN_EMAIL / OSF_ADMIN_PASSWORD / OSF_DIAG / OSF_SHOT_DIR). It resolves
+  the expected surfaces from tokens.css at runtime and EXITS NON-ZERO if either
+  row's sampled pixels deviate from the token expectation in either theme.
+  `node_modules` and `tests/browser/*.png` are gitignored; package.json +
+  package-lock.json are tracked (devDependencies only) and pruned from the
+  release zip (added to both bin/build-release.php and bin/verify-release.php
+  exclusion lists — kept in sync per ReleaseManifestTest).
+- TASK 4 — STAT-CARD TONES (architect-directed restyle of PR #27's heavier
+  colourisation): the four dashboard stat cards now use ONLY the `-subtle`
+  token family — a quiet background tint + a thin (3px) left border in the same
+  subtle colour; no saturated fills, no coloured numerals (PR #27's
+  full-strength borders + tinted 2rem numerals removed). The value→tone mapping
+  is computed in PHP via a new helper `statCardToneClass(int $value, bool
+  $failureStat)` (never JS): value 0 → `osf-stat--info` (blue) regardless of
+  what the stat measures; non-zero → `osf-stat--success`, EXCEPT the
+  failure-measuring stats (Failed (retrying), Dead (gave up)) → `osf-stat--danger`.
+  templates/admin/dashboard.php passes `false` for Active forms / Submissions
+  today and `true` for Failed / Dead. The retired `--osf-stat--accent` /
+  `--warning` tones are gone.
+- Tests (466, was 458; 3141 assertions, all green): DesignSystemTest — replaced
+  the PR #27 stat-accent test with `testDashboardStatCardsUseSubtleTonesOnly`
+  (each tone uses only its `-subtle` token for background + border, no
+  full-strength status colour, no numeral colour; template wires cards via
+  statCardToneClass), added a `statToneCases` dataprovider locking the
+  zero=info / non-zero=success / failure=danger mapping, added
+  `testAssetHelperAppendsTheAppVersion` (asset() = path + `?v=`Version::STRING;
+  no hand-typed version in either layout), and loosened the theme-init
+  first-in-head regex to tolerate the versioned src. AdminUiTest — replaced
+  `testStatCardsCarryStateModifierClasses` with
+  `testAllZeroStatCardsUseTheInfoTone` (fresh install: all counts 0 → all
+  info) and `testNonZeroStatCardsUseSuccessExceptFailureStatsWhichUseDanger`,
+  added `testEveryAdminAssetUrlCarriesTheCurrentVersion` (every `/assets/` URL
+  on every admin screen carries `?v=`Version::STRING, none unversioned), and
+  strengthened `testLayoutReferencesSelfHostedAssets` to assert the versioned
+  form. InstallerHttpTest — added `testInstallerAssetUrlsCarryTheCurrentVersion`.
+- Live verification: re-ran the Firefox diagnostic after all changes — both
+  rows still paint their exact token surfaces in both themes (PASS). Confirmed
+  the restyled stat cards render as quiet subtle tints (green for Active
+  forms/Submissions today, red for Failed/Dead, plain white numerals) via a
+  Firefox screenshot.
+- Housekeeping: seeded a `diag@example.com` admin + failed/dead submissions in
+  the shared dev SQLite DB for the diagnostic (dev data only, not app code);
+  removed the temporary seed script and screenshots afterwards.
+- Docs: CONTEXT.md overwritten (condensed snapshot with the header-grey verdict,
+  versioned assets, stat tones, and the dev-only Node tooling), this HISTORY
+  entry appended. QUESTIONS.md unchanged — no architecture/security/scope
+  blocker arose.
+- Deviations from prompt: added package.json/package-lock.json/node_modules to
+  the release exclusion lists (a direct consequence of introducing the dev-only
+  Node manifest — keeps the "no Node in production" constraint clean; not a
+  behavioural change).

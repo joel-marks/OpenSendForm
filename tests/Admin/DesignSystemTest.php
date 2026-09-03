@@ -124,8 +124,11 @@ final class DesignSystemTest extends TestCase
         foreach (['templates/admin/layout.php', 'templates/install/layout.php'] as $layout) {
             $raw = self::read($layout);
             $noPhp = preg_replace('/<\?php.*?\?>/s', '', $raw);
+            // The src is emitted through the versioning asset() helper (a short
+            // echo tag in the raw template), so match the theme-init reference
+            // loosely rather than a literal path.
             self::assertMatchesRegularExpression(
-                '#<head>\s*<script src="/assets/theme-init\.js"></script>#',
+                '#<head>\s*<script src="[^"]*theme-init\.js[^"]*"></script>#',
                 (string) $noPhp,
                 "theme-init.js is not the first element in <head> of {$layout}"
             );
@@ -486,56 +489,110 @@ final class DesignSystemTest extends TestCase
         }
     }
 
-    // --- Dashboard stat cards: subtle state accents, no filled background --
+    // --- Versioned asset URLs (structural cache-busting) ---------------------
 
-    public function testDashboardStatCardsHaveStateAccentBorderAndValueTintOnly(): void
+    public function testAssetHelperAppendsTheAppVersion(): void
+    {
+        require_once self::root() . '/src/Admin/helpers.php';
+
+        $url = \OpenSendForm\Admin\asset('/assets/admin.css');
+        self::assertSame('/assets/admin.css?v=' . \OpenSendForm\Version::STRING, $url);
+
+        // The version is sourced from the single Version constant, never a
+        // hand-typed string in the helper or the templates.
+        $helpers = self::read('src/Admin/helpers.php');
+        self::assertStringContainsString('Version::STRING', $helpers);
+        foreach (['templates/admin/layout.php', 'templates/install/layout.php'] as $layout) {
+            $tpl = self::read($layout);
+            self::assertDoesNotMatchRegularExpression(
+                '/\?v=\d+\.\d+\.\d+/',
+                $tpl,
+                "{$layout} must not hand-type a version; use asset()"
+            );
+            self::assertStringContainsString("asset('/assets/theme-init.js')", $tpl);
+        }
+    }
+
+    // --- Dashboard stat cards: restrained -subtle tones, no coloured numerals --
+
+    public function testDashboardStatCardsUseSubtleTonesOnly(): void
     {
         $css = self::read('public/assets/admin.css');
 
+        // Every stat tone maps onto the -subtle token family for BOTH the
+        // background tint and the thin left border — nothing else.
         $tokenBySuffix = [
-            'success' => '--osf-success',
-            'accent'  => '--osf-accent',
-            'warning' => '--osf-warning',
-            'danger'  => '--osf-danger',
+            'info'    => '--osf-info-subtle',
+            'success' => '--osf-success-subtle',
+            'danger'  => '--osf-danger-subtle',
         ];
 
         foreach ($tokenBySuffix as $suffix => $token) {
-            $borderPattern = '/\.osf-stat--' . $suffix . '\s*\{([^}]*)\}/s';
-            self::assertMatchesRegularExpression($borderPattern, $css, ".osf-stat--{$suffix} rule not found");
-            preg_match($borderPattern, $css, $block);
+            $rulePattern = '/\.osf-stat--' . $suffix . '\s*\{([^}]*)\}/s';
+            self::assertMatchesRegularExpression($rulePattern, $css, ".osf-stat--{$suffix} rule not found");
+            preg_match($rulePattern, $css, $block);
+
+            self::assertMatchesRegularExpression(
+                '/background:\s*var\(' . preg_quote($token, '/') . '\)/',
+                $block[1],
+                ".osf-stat--{$suffix} background must use the subtle token {$token}"
+            );
             self::assertMatchesRegularExpression(
                 '/border-left:\s*3px\s+solid\s+var\(' . preg_quote($token, '/') . '\)/',
                 $block[1],
-                ".osf-stat--{$suffix} must set a 3px {$token} left border"
+                ".osf-stat--{$suffix} left border must use the subtle token {$token}"
+            );
+            // Restraint guarantees: no saturated (non-subtle) status token, and
+            // no coloured numerals anywhere in the tone rule.
+            self::assertDoesNotMatchRegularExpression(
+                '/var\(--osf-(success|danger|info|warning|accent)\)/',
+                $block[1],
+                ".osf-stat--{$suffix} must not use a full-strength status colour"
             );
             self::assertStringNotContainsString(
-                'background',
+                'color:',
                 $block[1],
-                ".osf-stat--{$suffix} must not fill a background — the card stays --osf-bg-raised"
-            );
-
-            $valuePattern = '/\.osf-stat--' . $suffix . '\s+\.osf-stat-value\s*\{([^}]*)\}/s';
-            self::assertMatchesRegularExpression($valuePattern, $css, ".osf-stat--{$suffix} .osf-stat-value rule not found");
-            preg_match($valuePattern, $css, $valueBlock);
-            self::assertMatchesRegularExpression(
-                '/color:\s*var\(' . preg_quote($token, '/') . '\)/',
-                $valueBlock[1],
-                ".osf-stat--{$suffix} .osf-stat-value must be tinted with {$token}"
+                ".osf-stat--{$suffix} must not colour the numerals"
             );
         }
 
-        // The base card keeps its raised surface/border/radius unchanged.
-        self::assertMatchesRegularExpression(
-            '/\.osf-stat\s*\{[^}]*--osf-bg-raised[^}]*--osf-border-muted[^}]*--osf-radius/s',
-            $css
-        );
+        // The heavy PR#27 accents (full-strength borders, coloured values,
+        // the --accent/--warning tones) are gone.
+        self::assertStringNotContainsString('.osf-stat-value { color:', $css);
+        self::assertStringNotContainsString('.osf-stat--accent', $css);
+        self::assertStringNotContainsString('.osf-stat--warning', $css);
 
-        // The template wires each of the four cards to its state modifier.
+        // The template computes each card's tone in PHP via statCardToneClass —
+        // not a hand-typed modifier and not JS.
         $dashboard = self::read('templates/admin/dashboard.php');
-        self::assertStringContainsString('class="osf-stat osf-stat--success"', $dashboard);
-        self::assertStringContainsString('class="osf-stat osf-stat--accent"', $dashboard);
-        self::assertStringContainsString('class="osf-stat osf-stat--warning"', $dashboard);
-        self::assertStringContainsString('class="osf-stat osf-stat--danger"', $dashboard);
+        self::assertStringContainsString('statCardToneClass($activeForms, false)', $dashboard);
+        self::assertStringContainsString('statCardToneClass($todayCount, false)', $dashboard);
+        self::assertStringContainsString('statCardToneClass($failedCount, true)', $dashboard);
+        self::assertStringContainsString('statCardToneClass($deadCount, true)', $dashboard);
+    }
+
+    // --- Dashboard stat cards: the value->tone mapping rules ------------------
+
+    /**
+     * @dataProvider statToneCases
+     */
+    public function testStatCardToneMapping(int $value, bool $failureStat, string $expected): void
+    {
+        require_once self::root() . '/src/Admin/helpers.php';
+        self::assertSame($expected, \OpenSendForm\Admin\statCardToneClass($value, $failureStat));
+    }
+
+    /** @return array<string, array{int, bool, string}> */
+    public static function statToneCases(): array
+    {
+        return [
+            // Zero is always info/blue, regardless of what the stat measures.
+            'zero non-failure -> info'      => [0, false, 'osf-stat--info'],
+            'zero failure     -> info'      => [0, true, 'osf-stat--info'],
+            // Non-zero: success, except failure-measuring stats -> danger.
+            'non-zero non-failure -> success' => [3, false, 'osf-stat--success'],
+            'non-zero failure     -> danger'  => [2, true, 'osf-stat--danger'],
+        ];
     }
 
     // --- Admins: add-admin section spacing ----------------------------------

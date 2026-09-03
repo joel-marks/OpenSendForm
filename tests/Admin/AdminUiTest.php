@@ -106,30 +106,59 @@ final class AdminUiTest extends TestCase
         // A delivered submission's status is never in the problem list body.
     }
 
-    public function testStatCardsCarryStateModifierClasses(): void
+    public function testAllZeroStatCardsUseTheInfoTone(): void
     {
+        // A fresh install with no forms and no submissions: every stat value is
+        // zero, so EVERY card takes the info/blue tone regardless of what it
+        // measures (the zero=info rule).
         $this->login();
         $body = (string) $this->get('/admin')->getBody();
 
-        // Each stat card pairs the base class with its state accent modifier,
-        // in the fixed order the four cards render: Active forms (success),
-        // Submissions today (accent), Failed/retrying (warning), Dead (danger).
+        foreach (['Active forms', 'Submissions today', 'Failed \(retrying\)', 'Dead \(gave up\)'] as $label) {
+            self::assertMatchesRegularExpression(
+                '/<article class="osf-stat osf-stat--info">\s*<div class="osf-stat-value">0<\/div>\s*<div class="osf-stat-label">' . $label . '/s',
+                $body,
+                "Zero-valued '{$label}' card must use the info tone"
+            );
+        }
+        // No non-zero tones appear when everything is zero.
+        self::assertStringNotContainsString('osf-stat--success', $body);
+        self::assertStringNotContainsString('osf-stat--danger', $body);
+    }
+
+    public function testNonZeroStatCardsUseSuccessExceptFailureStatsWhichUseDanger(): void
+    {
+        // One active form + submissions across states so all four counts are
+        // non-zero: Active forms + Submissions today -> success; Failed + Dead
+        // (failure-measuring) -> danger.
+        $form = $this->forms->createForm('Contact', 'c@example.com', ['https://c.com']);
+        $id = (int) $form['id'];
+        $this->insertSubmission($id, self::TODAY . ' 08:00:00', 'sent');
+        $this->insertSubmission($id, self::TODAY . ' 09:00:00', 'failed', 1, 'boom');
+        $this->insertSubmission($id, self::TODAY . ' 10:00:00', 'dead', 5, 'gave up');
+
+        $this->login();
+        $body = (string) $this->get('/admin')->getBody();
+
         self::assertMatchesRegularExpression(
             '/<article class="osf-stat osf-stat--success">.*?Active forms/s',
             $body
         );
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--accent">.*?Submissions today/s',
+            '/<article class="osf-stat osf-stat--success">.*?Submissions today/s',
             $body
         );
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--warning">.*?Failed \(retrying\)/s',
+            '/<article class="osf-stat osf-stat--danger">.*?Failed \(retrying\)/s',
             $body
         );
         self::assertMatchesRegularExpression(
             '/<article class="osf-stat osf-stat--danger">.*?Dead \(gave up\)/s',
             $body
         );
+        // The retired heavy tones never appear.
+        self::assertStringNotContainsString('osf-stat--accent', $body);
+        self::assertStringNotContainsString('osf-stat--warning', $body);
     }
 
     public function testActiveFormsCountExcludesDisabled(): void
@@ -636,15 +665,50 @@ final class AdminUiTest extends TestCase
         }
     }
 
+    public function testEveryAdminAssetUrlCarriesTheCurrentVersion(): void
+    {
+        // Structural cache-busting: every <link>/<script> pointing at
+        // public/assets/ must carry ?v=<Version::STRING> so a released CSS/JS
+        // change is never served stale from a browser cache. No unversioned
+        // /assets/ URL may appear on any rendered admin screen.
+        $form = $this->forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $this->login();
+
+        $version = \OpenSendForm\Version::STRING;
+        $routes = [
+            'dashboard'   => '/admin',
+            'forms list'  => '/admin/forms',
+            'form edit'   => '/admin/forms/' . $form['id'] . '/edit',
+            'submissions' => '/admin/submissions',
+            'totp setup'  => '/admin/totp/setup', // exercises the extraScripts (qrcode.js) path
+            'account'     => '/admin/account',
+            'admins'      => '/admin/admins',
+        ];
+
+        foreach ($routes as $label => $route) {
+            $body = (string) $this->get($route)->getBody();
+            preg_match_all('/(?:src|href)="(\/assets\/[^"]*)"/', $body, $m);
+            self::assertNotEmpty($m[1], "{$label} ({$route}) emitted no /assets/ URL at all");
+            foreach ($m[1] as $url) {
+                self::assertStringContainsString(
+                    '?v=' . $version,
+                    $url,
+                    "{$label} ({$route}) has an UNVERSIONED asset URL: {$url}"
+                );
+            }
+        }
+    }
+
     public function testLayoutReferencesSelfHostedAssets(): void
     {
         // The login page renders chrome-free (no top nav), so it carries no
         // external Docs link — a clean check that every asset is self-hosted.
         $body = (string) $this->get('/admin/login')->getBody();
-        self::assertStringContainsString('/assets/tokens.css', $body);
-        self::assertStringContainsString('/assets/admin.css', $body);
-        self::assertStringContainsString('/assets/theme-init.js', $body);
-        self::assertStringContainsString('/assets/admin.js', $body);
+        $version = \OpenSendForm\Version::STRING;
+        self::assertStringContainsString('/assets/tokens.css?v=' . $version, $body);
+        self::assertStringContainsString('/assets/admin.css?v=' . $version, $body);
+        self::assertStringContainsString('/assets/theme-init.js?v=' . $version, $body);
+        self::assertStringContainsString('/assets/admin.js?v=' . $version, $body);
         self::assertStringNotContainsString('/assets/vendor/pico.min.css', $body);
         // No CDN or external references on this chrome-free page.
         self::assertStringNotContainsString('http://', str_replace('http-equiv', '', $body));

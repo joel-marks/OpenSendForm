@@ -17,6 +17,26 @@ if (!function_exists('OpenSendForm\\Admin\\h')) {
     }
 }
 
+if (!function_exists('OpenSendForm\\Admin\\asset')) {
+    /**
+     * Build a cache-busting URL for a static asset under public/assets/.
+     *
+     * Appends ?v=<app version> (sourced from the single Version::STRING
+     * constant — never a hand-typed version in a template) so that every
+     * release forces browsers to re-fetch changed CSS/JS instead of serving a
+     * stale cached copy. This is the structural cure for "I still see the old
+     * styling after an upgrade / hard reload" reports.
+     *
+     * The returned URL is safe to emit directly: the path is
+     * developer-controlled and the version is a constant, so no user input is
+     * ever interpolated.
+     */
+    function asset(string $path): string
+    {
+        return $path . '?v=' . \OpenSendForm\Version::STRING;
+    }
+}
+
 if (!function_exists('OpenSendForm\\Admin\\truncate')) {
     /**
      * Shorten a string to $length characters, appending an ellipsis when cut.
@@ -30,6 +50,31 @@ if (!function_exists('OpenSendForm\\Admin\\truncate')) {
         }
 
         return mb_substr($value, 0, $length) . '…';
+    }
+}
+
+if (!function_exists('OpenSendForm\\Admin\\statCardToneClass')) {
+    /**
+     * Map a dashboard stat's value to its -subtle tone modifier class.
+     *
+     * The tone is decided HERE in PHP (never in JS) so the rendered markup is
+     * self-describing and testable:
+     *   - value 0            -> info    (blue, "nothing to see") regardless of
+     *                                     what the stat measures;
+     *   - value != 0, failure stat (failed deliveries, dead letters, and
+     *                          anything semantically equivalent) -> danger;
+     *   - value != 0, any other stat -> success.
+     *
+     * All three map onto the -subtle token family in admin.css — a restrained
+     * accent, no saturated fills and no coloured numerals.
+     */
+    function statCardToneClass(int $value, bool $failureStat): string
+    {
+        if ($value === 0) {
+            return 'osf-stat--info';
+        }
+
+        return $failureStat ? 'osf-stat--danger' : 'osf-stat--success';
     }
 }
 

@@ -870,14 +870,23 @@ section > h1:first-child { margin-top: 0; }
     font-size: 0.85rem;
 }
 
-/* State accents: a 3px left border + a tinted value, no filled background. */
+/* State tones (architect-directed restyle): a RESTRAINED accent using ONLY
+   the -subtle token family — a quiet background tint plus a thin left border
+   in the same subtle colour. No saturated fills, no coloured numerals. Tone
+   is chosen in PHP (statCardToneClass): zero -> info, non-zero -> success,
+   non-zero failure stats -> danger. */
 
-.osf-stat--success { border-left: 3px solid var(--osf-success); }
-.osf-stat--accent { border-left: 3px solid var(--osf-accent); }
-.osf-stat--warning { border-left: 3px solid var(--osf-warning); }
-.osf-stat--danger { border-left: 3px solid var(--osf-danger); }
+.osf-stat--info {
+    background: var(--osf-info-subtle);
+    border-left: 3px solid var(--osf-info-subtle);
+}
 
-.osf-stat--success .osf-stat-value { color: var(--osf-success); }
-.osf-stat--accent .osf-stat-value { color: var(--osf-accent); }
-.osf-stat--warning .osf-stat-value { color: var(--osf-warning); }
-.osf-stat--danger .osf-stat-value { color: var(--osf-danger); }
+.osf-stat--success {
+    background: var(--osf-success-subtle);
+    border-left: 3px solid var(--osf-success-subtle);
+}
+
+.osf-stat--danger {
+    background: var(--osf-danger-subtle);
+    border-left: 3px solid var(--osf-danger-subtle);
+}

@@ -50,6 +50,11 @@ function osf_build_exclusions(): array
         'CONTEXT.md',
         'HISTORY.md',
         'QUESTIONS.md',
+        // Dev-only Node manifest for the tests/browser/ pixel checks. Production
+        // has no Node/build step, so these have no place in the release zip.
+        'package.json',
+        'package-lock.json',
+        'node_modules',
         // The build tooling itself is dev-only (needs git + composer) and has
         // no purpose inside a shipped release, so it prunes itself out.
         'bin/build-release.php',
