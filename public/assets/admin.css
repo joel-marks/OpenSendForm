@@ -137,9 +137,10 @@ main.container {
     border: 0;
 }
 
-/* --- Header bar: two compact rows on DIFFERENT surfaces (GitHub alignment,
-   fix/5d-polish-v3) — top row --osf-bg-inset, tab row --osf-bg — with a
-   single hairline under the second (tab) row only, no divider between
+/* --- Header bar: two compact rows on ONE shared surface (architect
+   art-direction ruling, 2026-09-03, reversing fix/5d-polish-v3's surface
+   split) — both the top row and the tab row are --osf-bg-inset, with a
+   single hairline under the second (tab) row only; no divider between
    them. -- */
 
 .osf-header {
@@ -272,7 +273,7 @@ main.container {
    hairline border on this row is the only divider in the two-row header). - */
 
 .osf-tabnav {
-    background: var(--osf-bg);
+    background: var(--osf-bg-inset);
     border-bottom: 1px solid var(--osf-border);
 }
 
