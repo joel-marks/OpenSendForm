@@ -2,6 +2,7 @@
 use function OpenSendForm\Admin\h;
 use function OpenSendForm\Admin\truncate;
 use function OpenSendForm\Admin\statusBadgeClass;
+use function OpenSendForm\Admin\statCardToneClass;
 use function OpenSendForm\Admin\icon;
 
 /**
@@ -65,20 +66,24 @@ use function OpenSendForm\Admin\icon;
     </div>
 <?php endif; ?>
 
+<?php /* Tone per card is decided in PHP (see statCardToneClass): a zero value
+         is always info/blue; a non-zero value is success, except the two
+         failure-measuring stats (Failed, Dead) which go danger. -subtle family
+         only — a restrained accent, no coloured numerals. */ ?>
 <section class="osf-stats">
-    <article class="osf-stat osf-stat--success">
+    <article class="osf-stat <?= h(statCardToneClass($activeForms, false)) ?>">
         <div class="osf-stat-value"><?= h((string) $activeForms) ?></div>
         <div class="osf-stat-label">Active forms</div>
     </article>
-    <article class="osf-stat osf-stat--accent">
+    <article class="osf-stat <?= h(statCardToneClass($todayCount, false)) ?>">
         <div class="osf-stat-value"><?= h((string) $todayCount) ?></div>
         <div class="osf-stat-label">Submissions today</div>
     </article>
-    <article class="osf-stat osf-stat--warning">
+    <article class="osf-stat <?= h(statCardToneClass($failedCount, true)) ?>">
         <div class="osf-stat-value"><?= h((string) $failedCount) ?></div>
         <div class="osf-stat-label">Failed (retrying)</div>
     </article>
-    <article class="osf-stat osf-stat--danger">
+    <article class="osf-stat <?= h(statCardToneClass($deadCount, true)) ?>">
         <div class="osf-stat-value"><?= h((string) $deadCount) ?></div>
         <div class="osf-stat-label">Dead (gave up)</div>
     </article>
