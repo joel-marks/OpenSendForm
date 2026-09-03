@@ -1,6 +1,14 @@
 # Dependencies
 /vendor/
 
+# Dev-only Node deps (Playwright for the browser pixel checks; never shipped
+# in the release zip — production has no Node/build step). package.json +
+# package-lock.json ARE tracked so the check is reproducible.
+/node_modules/
+
+# Screenshots emitted by tests/browser/ pixel checks (regenerated on each run).
+/tests/browser/*.png
+
 # Environment & secrets
 .env
 .env.*
