@@ -428,6 +428,116 @@ final class DesignSystemTest extends TestCase
         self::assertMatchesRegularExpression('/\.osf-btn-equal\s*\{[^}]*min-width/s', $css);
     }
 
+    // --- Header-block surfaces pinned (fix/header-surfaces-pinned) ---------
+
+    /**
+     * Defence-in-depth on top of testHeaderIsTwoRowsOnGithubAlignedSurfaces...:
+     * the generic .container rule must never carry a background (layout only),
+     * and every child wrapper between .osf-header/.osf-tabnav and their tab
+     * links must be pinned to transparent so nothing can paint a raised
+     * surface over the ruled header/tab-row backgrounds.
+     */
+    public function testContainerIsLayoutOnlyAndHeaderBlockChildrenArePinnedTransparent(): void
+    {
+        $css = self::read('public/assets/admin.css');
+
+        self::assertMatchesRegularExpression('/(?<!main)\.container\s*\{([^}]*)\}/s', $css, '.container rule not found');
+        preg_match('/(?<!main)\.container\s*\{([^}]*)\}/s', $css, $containerBlock);
+        self::assertStringNotContainsString(
+            'background',
+            $containerBlock[1],
+            '.container must be layout-only (max-width/padding/margin), no background'
+        );
+
+        self::assertMatchesRegularExpression('/main\.container\s*\{([^}]*)\}/s', $css, 'main.container rule not found');
+        preg_match('/main\.container\s*\{([^}]*)\}/s', $css, $mainBlock);
+        self::assertStringNotContainsString(
+            'background',
+            $mainBlock[1],
+            'main.container must carry no background — body supplies --osf-bg'
+        );
+
+        foreach ([
+            '.osf-header-inner' => 'transparent',
+            '.osf-tabnav-inner' => 'transparent',
+        ] as $selector => $expected) {
+            $pattern = '/' . preg_quote($selector, '/') . '\s*\{([^}]*)\}/s';
+            self::assertMatchesRegularExpression($pattern, $css, "{$selector} rule not found");
+            preg_match($pattern, $css, $block);
+            self::assertMatchesRegularExpression(
+                '/background:\s*' . $expected . '/',
+                $block[1],
+                "{$selector} must be pinned to background: {$expected}"
+            );
+        }
+
+        // .osf-tab-link and its hover/active states: transparent only, never
+        // a raised/inset surface.
+        foreach ([
+            '/\.osf-tab-link\s*\{([^}]*)\}/s',
+            '/\.osf-tab-link:hover\s*\{([^}]*)\}/s',
+            '/\.osf-tab-link\[aria-current="page"\]\s*\{([^}]*)\}/s',
+        ] as $pattern) {
+            self::assertMatchesRegularExpression($pattern, $css);
+            preg_match($pattern, $css, $block);
+            self::assertMatchesRegularExpression('/background:\s*transparent/', $block[1]);
+            self::assertStringNotContainsString('--osf-bg-raised', $block[1]);
+            self::assertStringNotContainsString('--osf-bg-inset', $block[1]);
+        }
+    }
+
+    // --- Dashboard stat cards: subtle state accents, no filled background --
+
+    public function testDashboardStatCardsHaveStateAccentBorderAndValueTintOnly(): void
+    {
+        $css = self::read('public/assets/admin.css');
+
+        $tokenBySuffix = [
+            'success' => '--osf-success',
+            'accent'  => '--osf-accent',
+            'warning' => '--osf-warning',
+            'danger'  => '--osf-danger',
+        ];
+
+        foreach ($tokenBySuffix as $suffix => $token) {
+            $borderPattern = '/\.osf-stat--' . $suffix . '\s*\{([^}]*)\}/s';
+            self::assertMatchesRegularExpression($borderPattern, $css, ".osf-stat--{$suffix} rule not found");
+            preg_match($borderPattern, $css, $block);
+            self::assertMatchesRegularExpression(
+                '/border-left:\s*3px\s+solid\s+var\(' . preg_quote($token, '/') . '\)/',
+                $block[1],
+                ".osf-stat--{$suffix} must set a 3px {$token} left border"
+            );
+            self::assertStringNotContainsString(
+                'background',
+                $block[1],
+                ".osf-stat--{$suffix} must not fill a background — the card stays --osf-bg-raised"
+            );
+
+            $valuePattern = '/\.osf-stat--' . $suffix . '\s+\.osf-stat-value\s*\{([^}]*)\}/s';
+            self::assertMatchesRegularExpression($valuePattern, $css, ".osf-stat--{$suffix} .osf-stat-value rule not found");
+            preg_match($valuePattern, $css, $valueBlock);
+            self::assertMatchesRegularExpression(
+                '/color:\s*var\(' . preg_quote($token, '/') . '\)/',
+                $valueBlock[1],
+                ".osf-stat--{$suffix} .osf-stat-value must be tinted with {$token}"
+            );
+        }
+
+        // The base card keeps its raised surface/border/radius unchanged.
+        self::assertMatchesRegularExpression(
+            '/\.osf-stat\s*\{[^}]*--osf-bg-raised[^}]*--osf-border-muted[^}]*--osf-radius/s',
+            $css
+        );
+
+        // The template wires each of the four cards to its state modifier.
+        $dashboard = self::read('templates/admin/dashboard.php');
+        self::assertStringContainsString('class="osf-stat osf-stat--success"', $dashboard);
+        self::assertStringContainsString('class="osf-stat osf-stat--accent"', $dashboard);
+        self::assertStringContainsString('class="osf-stat osf-stat--warning"', $dashboard);
+        self::assertStringContainsString('class="osf-stat osf-stat--danger"', $dashboard);
+    }
+
     // --- Admins: add-admin section spacing ----------------------------------
 
     public function testAddAdminSectionHasTopSpacing(): void

@@ -66,19 +66,19 @@ use function OpenSendForm\Admin\icon;
 <?php endif; ?>
 
 <section class="osf-stats">
-    <article class="osf-stat">
+    <article class="osf-stat osf-stat--success">
         <div class="osf-stat-value"><?= h((string) $activeForms) ?></div>
         <div class="osf-stat-label">Active forms</div>
     </article>
-    <article class="osf-stat">
+    <article class="osf-stat osf-stat--accent">
         <div class="osf-stat-value"><?= h((string) $todayCount) ?></div>
         <div class="osf-stat-label">Submissions today</div>
     </article>
-    <article class="osf-stat">
+    <article class="osf-stat osf-stat--warning">
         <div class="osf-stat-value"><?= h((string) $failedCount) ?></div>
         <div class="osf-stat-label">Failed (retrying)</div>
     </article>
-    <article class="osf-stat">
+    <article class="osf-stat osf-stat--danger">
         <div class="osf-stat-value"><?= h((string) $deadCount) ?></div>
         <div class="osf-stat-label">Dead (gave up)</div>
     </article>

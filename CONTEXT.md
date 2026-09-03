@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-08-27 (fix/5d-polish-v3, Claude Code)
+Last updated: 2026-09-03 (fix/header-surfaces-pinned, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -21,13 +21,20 @@ pass ("5d polish v2") that re-corrected the dark palette against github.com's
 actual computed styles, reshaped the header into two same-surface rows with
 one hairline, added an orange active-tab token, swapped the standalone logout
 button for a `<details>` account dropdown, and tightened spacing/control/
-banner consistency. fix/5d-polish-v3 (this sprint, not yet merged) is a third
+banner consistency. fix/5d-polish-v3 (merged to main via PR #25) is a third
 polish round: the header's two rows now sit on DIFFERENT surfaces (GitHub
 alignment, not "same surface" as v2 had it), tabs gained icons, the Admins
 Deactivate/Reactivate buttons became a toggle switch, Forms row buttons are
 equal-width, and every remaining template was converted to the `.osf-field`
-wrapper pattern — see "Design system" below. Suite green (455 tests). CI runs
-tests + a package build/verify on every PR/push.
+wrapper pattern — see "Design system" below. fix/tab-row-surface (merged via
+PR #26) and fix/header-surfaces-pinned (this sprint, not yet merged) are two
+successive micro-patches investigating a reported "tab row renders grey"
+defect; both found no actual painter (live-verified via headless Chromium
+against the real app through the real front controller), and the second
+pinned the header-block child wrappers to explicit `background: transparent`
+as defence-in-depth and added subtle left-border state accents (success/
+accent/warning/danger) to the four dashboard stat cards. Suite green (458
+tests). CI runs tests + a package build/verify on every PR/push.
 
 ## Product definition
 Free, open-source, self-hostable form-to-email service for shared cPanel/PHP
@@ -139,7 +146,21 @@ authenticated SMTP to the site owner.
   `--osf-bg-raised`) — hardened to an exact-token regex, an explicit
   no-raised-surface check on the top row, a sibling-adjacency check (no
   wrapper can sit between the rows), and a single-definition check per
-  selector.
+  selector. fix/header-surfaces-pinned (this sprint) re-confirmed the same
+  "no painter" finding a second time, live via headless Chromium through the
+  real front controller, then pinned `.osf-header-inner`/`.osf-tabnav-inner`/
+  `.osf-tab-link` to an explicit `background: transparent` as defence in
+  depth (was previously the unstated CSS initial value). **`.container` is
+  layout-only by rule** (`max-width`/`padding`/`margin` only, no
+  `background`, enforced by `DesignSystemTest`) — surfacing is entirely the
+  header/tabnav/body's job, never the shared column wrapper's.
+- **Dashboard stat-card state accents (fix/header-surfaces-pinned):** each of
+  the four `.osf-stat` cards (`templates/admin/dashboard.php`) carries a
+  modifier class (`osf-stat--success`/`--accent`/`--warning`/`--danger` for
+  Active forms/Submissions today/Failed (retrying)/Dead (gave up)) that adds
+  a 3px `border-left` in the matching `--osf-*` state token plus the same
+  tint on `.osf-stat-value` — no filled background; the card keeps its base
+  `--osf-bg-raised`/`--osf-border-muted`/`--osf-radius-lg` surface.
 - **Account menu**: the admin name is a `<details class="osf-account-menu">
   <summary>` dropdown trigger (native, no JS, CSP-safe — GitHub's own
   pattern) with a vendored `chevron-down` Lucide icon (rotates on `[open]`
