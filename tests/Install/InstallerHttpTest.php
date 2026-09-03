@@ -252,6 +252,25 @@ final class InstallerHttpTest extends TestCase
         self::assertNotSame('', $this->get('/install')->getHeaderLine('Content-Security-Policy'));
     }
 
+    public function testInstallerAssetUrlsCarryTheCurrentVersion(): void
+    {
+        // Structural cache-busting on the installer templates too: every
+        // /assets/ reference must carry ?v=<Version::STRING> (theme-init.js,
+        // tokens.css, admin.css, admin.js, install.js) and none may be
+        // unversioned.
+        $version = \OpenSendForm\Version::STRING;
+        $body = (string) $this->get('/install')->getBody();
+
+        preg_match_all('/(?:src|href)="(\/assets\/[^"]*)"/', $body, $m);
+        self::assertNotEmpty($m[1], 'The installer emitted no /assets/ URL at all');
+        foreach ($m[1] as $url) {
+            self::assertStringContainsString('?v=' . $version, $url, "Unversioned installer asset URL: {$url}");
+        }
+        // The two installer-only scripts are present and versioned.
+        self::assertStringContainsString('/assets/install.js?v=' . $version, $body);
+        self::assertStringContainsString('/assets/admin.js?v=' . $version, $body);
+    }
+
     public function testInstallTemplatesHaveNoInlineHandlersOrScripts(): void
     {
         $dir = dirname(__DIR__, 2) . '/templates/install';
