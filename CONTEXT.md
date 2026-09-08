@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-09-08 (fix/delivery-sweep-dns-timeout-field-errors, Claude Code)
+Last updated: 2026-09-08 (fix/forms-table-scroll-and-stat-links, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -12,7 +12,7 @@ migration command, guarded admin deletion and release packaging (v0.1.0 zip +
 `.htaccess` set + `bin/osf version`) are all built and merged to main. The
 design system is a bespoke `--osf-*` token contract with a two-row
 GitHub-aligned header on ONE shared surface, Dark/Light/Auto theme, vendored
-Lucide icons and responsive card-collapse tables. Suite green (481 tests).
+Lucide icons and responsive card-collapse tables. Suite green (483 tests).
 CI runs tests + a package build/verify on every PR/push.
 
 ## Product definition
@@ -83,8 +83,27 @@ Locked by SubmitPipelineOrderTest. The stage ORDER is locked.
 - Versioned asset URLs: every admin/installer `/assets/` `<link>`/`<script>`
   carries `?v=<Version::STRING>` via `OpenSendForm\Admin\asset()` — structural
   cache-bust. Embed assets (public/embed/*) also carry `?v=` in the snippet.
-- Dashboard stat tones use only the `-subtle` token family; value→tone mapping
-  in PHP (`statCardToneClass()`), never JS.
+- Dashboard stat cards are whole-card links (`<a class="osf-stat ...">`) to
+  their obvious destination (Active forms -> /admin/forms; Submissions today
+  -> /admin/submissions; Failed/Dead -> /admin/submissions?status=failed|dead,
+  reusing SubmissionsController's existing `status=` param). Tone
+  (`statCardToneClass()` in PHP, never JS) maps value→info/success/danger;
+  background stays on the `-subtle` token family, the thin 3px left edge uses
+  the FULL-STRENGTH token (`--osf-info`/`--osf-success`/`--osf-danger`) for
+  brightness, numerals stay uncoloured. Hover: `filter: brightness(1.08)`;
+  keyboard focus: `--osf-focus-ring` via `:focus-visible`. Watch for the
+  `a:hover { text-decoration: underline }` base-style specificity trap on any
+  future `.osf-*` interactive card — override it explicitly inside the
+  component's own `:hover` rule, not just the base selector.
+- Tables sharing the `.osf-table` class use the browser's default AUTO
+  layout, which sizes a column to its widest row and can push the table past
+  its container if a badge/button label varies by row state (hit this on the
+  forms table: "disabled" vs "active"). `forms_list.php`'s table also carries
+  a `.osf-table--forms` modifier (`table-layout: fixed` + explicit
+  percentage column widths + `overflow-wrap: anywhere`) so no row's content
+  can reopen a horizontal-scroll bug; this modifier is scoped to that one
+  table, not the shared `.osf-table` base (submissions/admins/installer/
+  dashboard tables are unaffected and untested against the same class of bug).
 - Account menu: native `<details>/<summary>` (no JS, CSP-safe). Theme: default
   dark, toggle cycles Dark/Light/Auto, `theme-init.js` sets pre-paint. Icons
   from a vendored Lucide subset (`src/Admin/icons.php`). Responsive tables

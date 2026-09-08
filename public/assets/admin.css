@@ -585,6 +585,22 @@ section > h1:first-child { margin-top: 0; }
 /* Deactivated admin rows read as muted. */
 .osf-table tr.osf-row-muted td { color: var(--osf-text-muted); }
 
+/* Forms table: fixed column widths so a wider badge/button label in any one
+   row (e.g. the "disabled" status or the "Enable"/"Disable" action, both
+   longer than their opposite) can never grow the whole table past its
+   container and force a horizontal scrollbar — the auto layout algorithm
+   otherwise widens a column for EVERY row to fit that row's widest content,
+   which can push the table's total width past 100%. Content wraps/truncates
+   within its fixed column instead. */
+.osf-table--forms { table-layout: fixed; }
+.osf-table--forms th:nth-child(1), .osf-table--forms td:nth-child(1) { width: 16%; } /* Name */
+.osf-table--forms th:nth-child(2), .osf-table--forms td:nth-child(2) { width: 28%; } /* Key */
+.osf-table--forms th:nth-child(3), .osf-table--forms td:nth-child(3) { width: 20%; } /* Recipient */
+.osf-table--forms th:nth-child(4), .osf-table--forms td:nth-child(4) { width: 12%; } /* Status */
+.osf-table--forms th:nth-child(5), .osf-table--forms td:nth-child(5) { width: 10%; } /* Turnstile */
+.osf-table--forms th:nth-child(6), .osf-table--forms td:nth-child(6) { width: 14%; } /* Actions */
+.osf-table--forms td { overflow-wrap: anywhere; }
+
 @media (max-width: 640px) {
     /* Stack every row into a label+value card — all data visible, no
        horizontal scroll. Cells expose their column name via data-label. */
@@ -852,12 +868,29 @@ section > h1:first-child { margin-top: 0; }
     margin-bottom: var(--osf-space-5);
 }
 
+/* Each card is the full clickable target to its obvious destination, so it
+   renders as an <a>, not a <div>/<article> — reset link defaults (colour,
+   underline) and lay it out identically to the old non-interactive card. */
 .osf-stat {
+    display: block;
     margin: 0;
     padding: var(--osf-space-4) var(--osf-space-5);
     background: var(--osf-bg-raised);
     border: 1px solid var(--osf-border-muted);
     border-radius: var(--osf-radius-lg);
+    color: inherit;
+    text-decoration: none;
+    transition: filter 0.1s ease-in-out;
+}
+
+.osf-stat:hover {
+    filter: brightness(1.08);
+    text-decoration: none;
+}
+
+.osf-stat:focus-visible {
+    outline: 2px solid var(--osf-focus-ring);
+    outline-offset: 2px;
 }
 
 .osf-stat .osf-stat-value {
@@ -871,23 +904,24 @@ section > h1:first-child { margin-top: 0; }
     font-size: 0.85rem;
 }
 
-/* State tones (architect-directed restyle): a RESTRAINED accent using ONLY
-   the -subtle token family — a quiet background tint plus a thin left border
-   in the same subtle colour. No saturated fills, no coloured numerals. Tone
-   is chosen in PHP (statCardToneClass): zero -> info, non-zero -> success,
-   non-zero failure stats -> danger. */
+/* State tones (architect-directed restyle): a RESTRAINED accent — a quiet
+   -subtle background tint, no saturated fill, no coloured numerals. Tone is
+   chosen in PHP (statCardToneClass): zero -> info, non-zero -> success,
+   non-zero failure stats -> danger. The thin left edge is a brighter accent
+   than the tint: the FULL-STRENGTH status token, not -subtle (architect
+   refinement) — still only 3px wide. */
 
 .osf-stat--info {
     background: var(--osf-info-subtle);
-    border-left: 3px solid var(--osf-info-subtle);
+    border-left: 3px solid var(--osf-info);
 }
 
 .osf-stat--success {
     background: var(--osf-success-subtle);
-    border-left: 3px solid var(--osf-success-subtle);
+    border-left: 3px solid var(--osf-success);
 }
 
 .osf-stat--danger {
     background: var(--osf-danger-subtle);
-    border-left: 3px solid var(--osf-danger-subtle);
+    border-left: 3px solid var(--osf-danger);
 }
