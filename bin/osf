@@ -390,7 +390,9 @@ function promptHidden(string $label): string
 }
 
 /**
- * mail:retry — re-attempt every failed submission whose retry is due.
+ * mail:retry — re-attempt every submission the sweep finds due: failed
+ * submissions whose backoff has elapsed AND never-attempted 'received'
+ * submissions accepted while mail was off/unavailable.
  *
  * Intended for a cPanel cron entry. Prints a one-line summary and always
  * exits 0 so a transient mail outage never marks the cron job as failing.
@@ -695,8 +697,10 @@ function usage(): string
       admin:delete permanently removes an admin; refuses the last active
         admin. No password prompt — shell access is already the higher
         privilege.
-      mail:retry re-sends failed submissions whose backoff has elapsed
-        (intended for a cPanel cron entry); it always exits 0.
+      mail:retry re-sends submissions whose delivery is due: failed
+        submissions whose backoff has elapsed, plus never-attempted
+        'received' submissions accepted while mail was disabled or SMTP was
+        unavailable (intended for a cPanel cron entry); it always exits 0.
       mail:status prints the mail config state (no secrets) and runs live
         SPF/DKIM/DMARC DNS lookups for the From domain (skips when offline).
       submissions:list shows metadata only — never submitted content.

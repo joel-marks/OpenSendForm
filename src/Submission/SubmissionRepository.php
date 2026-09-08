@@ -197,7 +197,15 @@ final class SubmissionRepository
     }
 
     /**
-     * Failed submissions whose next_attempt_at has come due (<= $now).
+     * Submissions the retry sweep should re-attempt now. Two kinds qualify:
+     *
+     *  - 'failed' submissions whose scheduled next_attempt_at has come due
+     *    (<= $now) — the normal backoff-driven retry, and
+     *  - 'received' submissions with attempts = 0 — accepted but NEVER
+     *    attempted (stored while mail was disabled or SMTP was unavailable
+     *    pre-attempt). They have no next_attempt_at because no attempt ever
+     *    failed to schedule one; they are treated as immediately due, with no
+     *    backoff, so enabling mail later finally delivers them.
      *
      * Comparison is lexicographic on the portable 'Y-m-d H:i:s' UTC text,
      * which sorts chronologically, so no dialect date arithmetic is needed.
@@ -208,9 +216,10 @@ final class SubmissionRepository
     {
         return $this->db->fetchAll(
             "SELECT * FROM submissions
-              WHERE status = 'failed'
-                AND next_attempt_at IS NOT NULL
-                AND next_attempt_at <= :now
+              WHERE (status = 'failed'
+                     AND next_attempt_at IS NOT NULL
+                     AND next_attempt_at <= :now)
+                 OR (status = 'received' AND attempts = 0)
               ORDER BY next_attempt_at ASC, id ASC",
             ['now' => $now]
         );

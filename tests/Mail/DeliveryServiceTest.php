@@ -171,6 +171,51 @@ final class DeliveryServiceTest extends TestCase
         self::assertSame(1, $after[DeliveryService::RESULT_SENT]);
     }
 
+    public function testRetryDueSweepsNeverAttemptedReceivedWhenMailEnabled(): void
+    {
+        // A submission accepted while mail was off stays 'received' with
+        // attempts = 0 and no next_attempt_at. With mail now enabled the sweep
+        // must treat it as immediately due and deliver it.
+        $service = $this->service();
+        $id = $this->storeSubmission(['email' => 'ada@example.com', 'message' => 'Hi']);
+
+        $summary = $service->retryDue();
+
+        self::assertSame(1, $summary['attempted']);
+        self::assertSame(1, $summary[DeliveryService::RESULT_SENT]);
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('sent', $row['status']);
+        self::assertSame(1, (int) $row['attempts']);
+        self::assertSame(1, $this->mailer->callCount());
+    }
+
+    public function testRetryDueSkipsReceivedWhenMailStillDisabled(): void
+    {
+        // Same never-attempted row, but mail is still disabled: the sweep must
+        // skip it untouched — no attempt burned, no backoff started.
+        $config = Config::fromEnvironment([
+            'MAIL_ENABLED'               => '0',
+            'MAIL_MAX_ATTEMPTS'          => '3',
+            'MAIL_RETRY_BACKOFF_MINUTES' => '1,5,30',
+        ]);
+        $service = $this->service($config);
+        $id = $this->storeSubmission(['email' => 'ada@example.com', 'message' => 'Hi']);
+
+        $summary = $service->retryDue();
+
+        self::assertSame(1, $summary['attempted']);
+        self::assertSame(1, $summary[DeliveryService::RESULT_SKIPPED]);
+        self::assertSame(0, $summary[DeliveryService::RESULT_SENT]);
+
+        $row = $this->submissions->findById($id);
+        self::assertSame('received', $row['status']);
+        self::assertSame(0, (int) $row['attempts']);
+        self::assertNull($row['next_attempt_at']);
+        self::assertNull($row['last_attempt_at']);
+        self::assertSame(0, $this->mailer->callCount());
+    }
+
     public function testMissingSubmissionIsSkipped(): void
     {
         self::assertSame(DeliveryService::RESULT_SKIPPED, $this->service()->attemptDelivery(999));

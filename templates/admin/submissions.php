@@ -87,7 +87,7 @@ $return = [
             <?php foreach ($rows as $row): ?>
                 <?php
                 $rstatus = (string) $row['status'];
-                $retryable = $rstatus === 'failed' || $rstatus === 'dead';
+                $retryable = $rstatus === 'failed' || $rstatus === 'dead' || $rstatus === 'received';
                 $error = (string) ($row['last_error'] ?? '');
                 ?>
                 <tr>
