@@ -1816,3 +1816,90 @@ test-harness gap; all fixed.
 - Deviations from prompt: Task 4 fixed no observable bug (the mapping was
   already field-scoped on main); delivered the requested explicit mapping and
   recorded the non-reproduction rather than inventing a defect.
+
+## 2026-09-08 — fix/forms-table-scroll-and-stat-links: forms-table overflow + stat-card links
+
+Branch: `fix/forms-table-scroll-and-stat-links` off `main`. No new Composer
+dependencies (none authorised). Presentation only — no pipeline/mail/embed/
+contract changes. Diagnosed live with a headless-Chromium Playwright script
+(dev-only, run from `tests/browser/`, not committed) against `composer serve`
++ a seeded admin, comparing rendered column/table widths with a disabled vs.
+all-active form set.
+
+- TASK 1 — FORMS TABLE HORIZONTAL SCROLLBAR. ROOT CAUSE (CSS-only, no markup
+  defect): `.osf-table` uses the browser's default AUTO table layout, and
+  every cell in a column carries `white-space: nowrap` (badges, buttons).
+  Auto layout sizes each column to its WIDEST row's content and applies that
+  width to every row in the column. The Status badge text "disabled" (8
+  chars) is wider than "active" (6 chars); with even one disabled form
+  present, the Status column widened by ~15px versus the all-active baseline,
+  pushing the table's total width from 912px to ~926px inside a 912px-wide
+  `.osf-table-wrap` — 14px past the container, triggering `overflow-x: auto`'s
+  scrollbar. Verified precisely: measured `getBoundingClientRect().width` per
+  cell in both states via the diagnostic script; only the Status column's
+  rendered width changed (83.36px -> 98.59px), matching the observed overflow
+  to the pixel. FIX: new `.osf-table--forms` modifier (applied only to
+  `templates/admin/forms_list.php`'s table, not the shared `.osf-table` base
+  used by dashboard/submissions/admins/installer) sets `table-layout: fixed`
+  with explicit per-column percentage widths summing to 100%, plus
+  `overflow-wrap: anywhere` on its cells so any long, unbreakable value (a
+  40-char form key, a long email) wraps within its fixed column instead of
+  forcing the table wider. Re-verified with the same diagnostic script: 0px
+  overflow with the disabled form present (912px === 912px), screenshot
+  confirms the Key/Recipient cells wrap cleanly onto multiple lines. The
+  under-640px card-collapse rule is untouched (table-layout is moot once the
+  media query switches cells to `display: block`). Regression assertion
+  added (`DesignSystemTest::testFormsTableUsesFixedLayoutToPreventHorizontalOverflow`)
+  locking the modifier class + `table-layout: fixed` + the 100%-summed column
+  widths, since a future column change could silently reopen the same class
+  of bug. `testDataTablesCarryCardCollapseHooks` loosened from an exact
+  `class="osf-table"` substring match to a whole-class-token regex so the new
+  second class doesn't break it.
+
+- TASK 2 — STAT-CARD LINKS. Each dashboard stat card's outer element changed
+  from a non-interactive `<article>` to a whole-card `<a href="...">`
+  (`templates/admin/dashboard.php`) — the entire card, not just the numeral
+  or label, is now the click target. Destinations: Active forms ->
+  `/admin/forms`; Submissions today -> `/admin/submissions`; Failed
+  (retrying) -> `/admin/submissions?status=failed`; Dead (gave up) ->
+  `/admin/submissions?status=dead`. The two filtered links reuse
+  `SubmissionsController`'s existing `status=` query parameter — read from
+  its `cleanStatus()`/`STATUSES` handling rather than invented. CSS
+  (`.osf-stat`): reset the anchor's default colour/underline
+  (`color: inherit; text-decoration: none;`), added `.osf-stat:hover` (a
+  `filter: brightness(1.08)` affordance, tokens-only) and
+  `.osf-stat:focus-visible` (`outline: 2px solid var(--osf-focus-ring)`).
+  CAUGHT IN VERIFICATION: the base stylesheet's `a:hover { text-decoration:
+  underline; }` (specificity 0,1,1) outranks a bare `.osf-stat { text-
+  decoration: none; }` (0,1,0) on hover, so the reset was silently losing on
+  :hover — screenshotted and caught before commit; fixed by declaring
+  `text-decoration: none` directly inside `.osf-stat:hover` (0,2,0, wins).
+  Visually verified in both rest/hover/keyboard-focus states via Playwright
+  screenshots. Tests updated: `AdminUiTest`'s three stat-card assertions
+  (`<article ...>` -> `<a href="..." ...>` with the exact destination);
+  `DesignSystemTest` gained `testDashboardStatCardsAreLinksToTheirDestinations`
+  locking the four hrefs + the hover/focus-ring/text-decoration rules.
+
+- TASK 3 — STAT-CARD LEFT-EDGE BRIGHTNESS (architect-directed). The three
+  tone rules (`.osf-stat--info/--success/--danger`) kept their `background`
+  on the `-subtle` token family unchanged, but `border-left` now references
+  the FULL-STRENGTH token (`--osf-info`/`--osf-success`/`--osf-danger`)
+  instead of `-subtle` — same 3px width, brighter colour, in both themes
+  (themes differ only via the token values in `tokens.css`, untouched).
+  Numerals remain uncoloured. `DesignSystemTest::testDashboardStatCardsUseSubtleTonesOnly`
+  replaced with `testDashboardStatCardsUseSubtleBackgroundAndFullStrengthEdge`,
+  which now asserts the split explicitly (subtle background + full-strength
+  edge + exact-token match so the old `-subtle` edge value can't silently
+  regress back in) instead of asserting both properties on the same token.
+
+- Tests: full PHPUnit suite green — 483 tests, 3192 assertions (was 481; +2
+  new: 1 forms-table fixed-layout lock, 1 stat-card-links lock; 2 existing
+  tests rewritten in place for the border/link changes, none removed).
+  `DesignSystemTest`'s hardcoded-colour scan stayed green throughout (only
+  `--osf-*` tokens used). Manually verified in a real running instance
+  (`composer serve` + headless Chromium via Playwright, dev-only, not
+  committed): forms-table zero-overflow with a disabled row, stat cards
+  navigate to their destinations, hover/focus states screenshotted.
+- Docs: CONTEXT.md overwritten; this HISTORY entry appended. QUESTIONS.md
+  unchanged — no architecture/security/scope blocker arose.
+- Deviations from prompt: none.

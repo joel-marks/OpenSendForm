@@ -14,7 +14,7 @@ use function OpenSendForm\Admin\icon;
     <p>No forms yet. <a href="/admin/forms/new">Create your first form</a>.</p>
 <?php else: ?>
     <div class="osf-table-wrap">
-        <table class="osf-table">
+        <table class="osf-table osf-table--forms">
             <thead>
                 <tr>
                     <th scope="col">Name</th>

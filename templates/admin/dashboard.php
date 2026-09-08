@@ -69,24 +69,26 @@ use function OpenSendForm\Admin\icon;
 <?php /* Tone per card is decided in PHP (see statCardToneClass): a zero value
          is always info/blue; a non-zero value is success, except the two
          failure-measuring stats (Failed, Dead) which go danger. -subtle family
-         only — a restrained accent, no coloured numerals. */ ?>
+         only — a restrained accent, no coloured numerals. Each card links to
+         its obvious destination; the filtered submissions links reuse the
+         existing status= query parameter (see SubmissionsController). */ ?>
 <section class="osf-stats">
-    <article class="osf-stat <?= h(statCardToneClass($activeForms, false)) ?>">
+    <a href="/admin/forms" class="osf-stat <?= h(statCardToneClass($activeForms, false)) ?>">
         <div class="osf-stat-value"><?= h((string) $activeForms) ?></div>
         <div class="osf-stat-label">Active forms</div>
-    </article>
-    <article class="osf-stat <?= h(statCardToneClass($todayCount, false)) ?>">
+    </a>
+    <a href="/admin/submissions" class="osf-stat <?= h(statCardToneClass($todayCount, false)) ?>">
         <div class="osf-stat-value"><?= h((string) $todayCount) ?></div>
         <div class="osf-stat-label">Submissions today</div>
-    </article>
-    <article class="osf-stat <?= h(statCardToneClass($failedCount, true)) ?>">
+    </a>
+    <a href="/admin/submissions?status=failed" class="osf-stat <?= h(statCardToneClass($failedCount, true)) ?>">
         <div class="osf-stat-value"><?= h((string) $failedCount) ?></div>
         <div class="osf-stat-label">Failed (retrying)</div>
-    </article>
-    <article class="osf-stat <?= h(statCardToneClass($deadCount, true)) ?>">
+    </a>
+    <a href="/admin/submissions?status=dead" class="osf-stat <?= h(statCardToneClass($deadCount, true)) ?>">
         <div class="osf-stat-value"><?= h((string) $deadCount) ?></div>
         <div class="osf-stat-label">Dead (gave up)</div>
-    </article>
+    </a>
 </section>
 
 <h2>Recent delivery problems</h2>

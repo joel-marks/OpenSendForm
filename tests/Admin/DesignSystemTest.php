@@ -370,7 +370,13 @@ final class DesignSystemTest extends TestCase
 
         foreach ($tableTemplates as $tpl) {
             $html = self::read($tpl);
-            self::assertStringContainsString('class="osf-table"', $html, "{$tpl} table is not marked osf-table");
+            // Matches "osf-table" as a whole class token — forms_list.php also
+            // carries the osf-table--forms fixed-layout modifier alongside it.
+            self::assertMatchesRegularExpression(
+                '/class="osf-table(?:\s|")/',
+                $html,
+                "{$tpl} table is not marked osf-table"
+            );
             self::assertStringContainsString('data-label="', $html, "{$tpl} cells carry no data-label for card collapse");
         }
 
@@ -428,6 +434,49 @@ final class DesignSystemTest extends TestCase
 
         $css = self::read('public/assets/admin.css');
         self::assertMatchesRegularExpression('/\.osf-btn-equal\s*\{[^}]*min-width/s', $css);
+    }
+
+    // --- Forms table: fixed layout so no row state can force horizontal
+    // scroll (fix/forms-table-scroll-and-stat-links) ------------------------
+
+    /**
+     * A disabled form's wider "disabled" badge / "Enable" action previously
+     * widened the Status/Actions columns for every row under auto table
+     * layout, pushing the table past its container and triggering a
+     * horizontal scrollbar. Locking table-layout: fixed (with explicit,
+     * summed-to-100% column widths) on the forms table specifically means no
+     * single row's content can ever grow the table wider than its wrap.
+     */
+    public function testFormsTableUsesFixedLayoutToPreventHorizontalOverflow(): void
+    {
+        $html = self::read('templates/admin/forms_list.php');
+        self::assertMatchesRegularExpression(
+            '/class="osf-table osf-table--forms"/',
+            $html,
+            'forms_list.php table must carry the osf-table--forms fixed-layout modifier'
+        );
+
+        $css = self::read('public/assets/admin.css');
+        self::assertMatchesRegularExpression(
+            '/\.osf-table--forms\s*\{[^}]*table-layout:\s*fixed/s',
+            $css,
+            '.osf-table--forms must set table-layout: fixed'
+        );
+
+        // Every column gets an explicit width, and they sum to 100% — no
+        // column is left to auto-size off row content.
+        preg_match_all(
+            '/\.osf-table--forms t[hd]:nth-child\((\d)\)[^{]*\{\s*width:\s*(\d+)%/',
+            $css,
+            $matches,
+            PREG_SET_ORDER
+        );
+        $widthByColumn = [];
+        foreach ($matches as $m) {
+            $widthByColumn[(int) $m[1]] = (int) $m[2];
+        }
+        self::assertCount(6, $widthByColumn, 'Expected an explicit width for each of the 6 forms-table columns');
+        self::assertSame(100, array_sum($widthByColumn), 'Forms table column widths must sum to 100%');
     }
 
     // --- Header-block surfaces pinned (fix/header-surfaces-pinned) ---------
@@ -512,41 +561,52 @@ final class DesignSystemTest extends TestCase
         }
     }
 
-    // --- Dashboard stat cards: restrained -subtle tones, no coloured numerals --
+    // --- Dashboard stat cards: subtle background tint, full-strength edge --
 
-    public function testDashboardStatCardsUseSubtleTonesOnly(): void
+    /**
+     * Architect-directed refinement (fix/forms-table-scroll-and-stat-links):
+     * the card BACKGROUND stays on the restrained -subtle family exactly as
+     * before, but the thin left edge now uses the FULL-STRENGTH status token
+     * so it reads brighter — still only 3px wide. Numerals stay uncoloured.
+     */
+    public function testDashboardStatCardsUseSubtleBackgroundAndFullStrengthEdge(): void
     {
         $css = self::read('public/assets/admin.css');
 
-        // Every stat tone maps onto the -subtle token family for BOTH the
-        // background tint and the thin left border — nothing else.
-        $tokenBySuffix = [
-            'info'    => '--osf-info-subtle',
-            'success' => '--osf-success-subtle',
-            'danger'  => '--osf-danger-subtle',
+        $tokensBySuffix = [
+            'info'    => ['bg' => '--osf-info-subtle',    'edge' => '--osf-info'],
+            'success' => ['bg' => '--osf-success-subtle', 'edge' => '--osf-success'],
+            'danger'  => ['bg' => '--osf-danger-subtle',  'edge' => '--osf-danger'],
         ];
 
-        foreach ($tokenBySuffix as $suffix => $token) {
+        foreach ($tokensBySuffix as $suffix => $tokens) {
             $rulePattern = '/\.osf-stat--' . $suffix . '\s*\{([^}]*)\}/s';
             self::assertMatchesRegularExpression($rulePattern, $css, ".osf-stat--{$suffix} rule not found");
             preg_match($rulePattern, $css, $block);
 
             self::assertMatchesRegularExpression(
-                '/background:\s*var\(' . preg_quote($token, '/') . '\)/',
+                '/background:\s*var\(' . preg_quote($tokens['bg'], '/') . '\)/',
                 $block[1],
-                ".osf-stat--{$suffix} background must use the subtle token {$token}"
+                ".osf-stat--{$suffix} background must stay on the subtle token {$tokens['bg']}"
             );
+            // The edge token must be the FULL-strength variant — exact match
+            // (word boundary on the closing paren) so the -subtle token of the
+            // same family can't slip past a loose substring check.
             self::assertMatchesRegularExpression(
-                '/border-left:\s*3px\s+solid\s+var\(' . preg_quote($token, '/') . '\)/',
+                '/border-left:\s*3px\s+solid\s+var\(' . preg_quote($tokens['edge'], '/') . '\)/',
                 $block[1],
-                ".osf-stat--{$suffix} left border must use the subtle token {$token}"
+                ".osf-stat--{$suffix} left edge must use the full-strength token {$tokens['edge']}, not -subtle"
             );
-            // Restraint guarantees: no saturated (non-subtle) status token, and
-            // no coloured numerals anywhere in the tone rule.
-            self::assertDoesNotMatchRegularExpression(
-                '/var\(--osf-(success|danger|info|warning|accent)\)/',
+            self::assertStringNotContainsString(
+                'border-left: 3px solid var(' . $tokens['bg'] . ')',
                 $block[1],
-                ".osf-stat--{$suffix} must not use a full-strength status colour"
+                ".osf-stat--{$suffix} left edge must no longer use the subtle token"
+            );
+            // Edge stays thin — the refinement only changes colour, not width.
+            self::assertMatchesRegularExpression(
+                '/border-left:\s*3px\s+solid/',
+                $block[1],
+                ".osf-stat--{$suffix} left edge must stay 3px"
             );
             self::assertStringNotContainsString(
                 'color:',
@@ -555,8 +615,8 @@ final class DesignSystemTest extends TestCase
             );
         }
 
-        // The heavy PR#27 accents (full-strength borders, coloured values,
-        // the --accent/--warning tones) are gone.
+        // The heavy PR#27 accents (coloured values, the --accent/--warning
+        // tones) are gone.
         self::assertStringNotContainsString('.osf-stat-value { color:', $css);
         self::assertStringNotContainsString('.osf-stat--accent', $css);
         self::assertStringNotContainsString('.osf-stat--warning', $css);
@@ -568,6 +628,59 @@ final class DesignSystemTest extends TestCase
         self::assertStringContainsString('statCardToneClass($todayCount, false)', $dashboard);
         self::assertStringContainsString('statCardToneClass($failedCount, true)', $dashboard);
         self::assertStringContainsString('statCardToneClass($deadCount, true)', $dashboard);
+    }
+
+    // --- Dashboard stat cards: the whole card is a link to its destination --
+
+    public function testDashboardStatCardsAreLinksToTheirDestinations(): void
+    {
+        $dashboard = self::read('templates/admin/dashboard.php');
+
+        // Each card's outer element is an <a> (not a div/article) carrying
+        // the exact destination — the SubmissionsController's existing
+        // status= filter parameter for the two filtered cards, invented
+        // nothing new.
+        $destinationByLabel = [
+            'Active forms'       => '/admin/forms',
+            'Submissions today'  => '/admin/submissions',
+            'Failed \(retrying\)' => '/admin/submissions?status=failed',
+            'Dead \(gave up\)'   => '/admin/submissions?status=dead',
+        ];
+
+        foreach ($destinationByLabel as $label => $href) {
+            self::assertMatchesRegularExpression(
+                '/<a href="' . preg_quote($href, '/') . '" class="osf-stat[^"]*">\s*<div class="osf-stat-value">.*?<div class="osf-stat-label">' . $label . '/s',
+                $dashboard,
+                "Stat card '{$label}' must be a whole-card link to {$href}"
+            );
+        }
+
+        // No leftover non-interactive card markup.
+        self::assertStringNotContainsString('<article class="osf-stat', $dashboard);
+
+        $css = self::read('public/assets/admin.css');
+        // Reset link defaults so the card keeps its existing visual
+        // treatment rather than looking like inline text.
+        self::assertMatchesRegularExpression(
+            '/\.osf-stat\s*\{[^}]*text-decoration:\s*none/s',
+            $css,
+            '.osf-stat must reset the anchor underline'
+        );
+        self::assertMatchesRegularExpression(
+            '/\.osf-stat\s*\{[^}]*color:\s*inherit/s',
+            $css,
+            '.osf-stat must reset the anchor colour'
+        );
+        // A hover affordance exists, using tokens only (asserted separately by
+        // testNoHardcodedColoursOutsideTokens — this just checks the rule is
+        // present at all).
+        self::assertMatchesRegularExpression('/\.osf-stat:hover\s*\{/', $css, '.osf-stat:hover rule not found');
+        // Keyboard focus must be visible via the shared focus-ring token.
+        self::assertMatchesRegularExpression(
+            '/\.osf-stat:focus-visible\s*\{[^}]*--osf-focus-ring/s',
+            $css,
+            '.osf-stat:focus-visible must use --osf-focus-ring'
+        );
     }
 
     // --- Dashboard stat cards: the value->tone mapping rules ------------------

@@ -116,7 +116,7 @@ final class AdminUiTest extends TestCase
 
         foreach (['Active forms', 'Submissions today', 'Failed \(retrying\)', 'Dead \(gave up\)'] as $label) {
             self::assertMatchesRegularExpression(
-                '/<article class="osf-stat osf-stat--info">\s*<div class="osf-stat-value">0<\/div>\s*<div class="osf-stat-label">' . $label . '/s',
+                '/<a href="[^"]*" class="osf-stat osf-stat--info">\s*<div class="osf-stat-value">0<\/div>\s*<div class="osf-stat-label">' . $label . '/s',
                 $body,
                 "Zero-valued '{$label}' card must use the info tone"
             );
@@ -141,19 +141,19 @@ final class AdminUiTest extends TestCase
         $body = (string) $this->get('/admin')->getBody();
 
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--success">.*?Active forms/s',
+            '/<a href="\/admin\/forms" class="osf-stat osf-stat--success">.*?Active forms/s',
             $body
         );
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--success">.*?Submissions today/s',
+            '/<a href="\/admin\/submissions" class="osf-stat osf-stat--success">.*?Submissions today/s',
             $body
         );
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--danger">.*?Failed \(retrying\)/s',
+            '/<a href="\/admin\/submissions\?status=failed" class="osf-stat osf-stat--danger">.*?Failed \(retrying\)/s',
             $body
         );
         self::assertMatchesRegularExpression(
-            '/<article class="osf-stat osf-stat--danger">.*?Dead \(gave up\)/s',
+            '/<a href="\/admin\/submissions\?status=dead" class="osf-stat osf-stat--danger">.*?Dead \(gave up\)/s',
             $body
         );
         // The retired heavy tones never appear.
