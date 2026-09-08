@@ -39,8 +39,8 @@ use OpenSendForm\Submission\SubmissionRepository;
 use OpenSendForm\Submit\SubmitPipeline;
 use OpenSendForm\Turnstile\CurlTurnstileVerifier;
 use OpenSendForm\Turnstile\TurnstileVerifierInterface;
+use OpenSendForm\Validation\BoundedDnsChecker;
 use OpenSendForm\Validation\DnsChecker;
-use OpenSendForm\Validation\SystemDnsChecker;
 use Slim\App;
 use Slim\Factory\AppFactory as SlimAppFactory;
 
@@ -103,7 +103,7 @@ final class AppFactory
     ): App {
         $config ??= Config::fromEnvironment();
         $db ??= Database::connect($config->dbDsn(), $config->dbUser(), $config->dbPass());
-        $dns ??= new SystemDnsChecker();
+        $dns ??= BoundedDnsChecker::fromSystem();
         $clock ??= new SystemClock();
         $turnstile ??= new CurlTurnstileVerifier();
         $session ??= new NativeSession();
