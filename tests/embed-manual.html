@@ -10,6 +10,14 @@
   every embed state against the LIVE dev API. It is served only in dev, at
   /embed/manual.html (see Routes::embedManual); it 404s in every other env.
 
+  The form below is a STATIC fallback present in the raw HTML (same shape as the
+  admin embed snippet, honeypot included), so the no-JS path can be tested even
+  with JavaScript disabled. With JS on, the inline script completes its action +
+  data-osf-* attributes from the ?key= query parameter and osf.js enhances it;
+  with JS off, the form still renders and the <noscript> block explains how to
+  finish the action by hand (pure HTML cannot read a query parameter into a form
+  attribute, and the harness must not server-render — see HISTORY).
+
   Usage (from the dev container):
     1. composer serve           # http://localhost:8080
     2. Create a form whose allowed origin includes http://localhost:8080, e.g.
@@ -35,6 +43,10 @@
   #log{background:#0d1117;color:#c9d1d9;font-family:ui-monospace,monospace;font-size:.8rem;
     padding:.75rem;border-radius:.4rem;height:14rem;overflow:auto;white-space:pre-wrap}
   .config{background:#f4f5f7;border-radius:.4rem;padding:1rem;margin-bottom:1.5rem}
+  .nojs{background:#fff4e5;border:1px solid #e0a458;border-radius:.4rem;padding:1rem;margin:1rem 0}
+  .nojs code{background:#f6e6cf}
+  pre.snippet{background:#0d1117;color:#c9d1d9;font-size:.78rem;padding:.75rem;border-radius:.4rem;
+    overflow:auto;white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -45,7 +57,51 @@
 <div class="cols">
   <div class="col">
     <h2>Live form</h2>
-    <div id="mount"><em>Enter a form key above to mount the embed.</em></div>
+    <p id="mount-status"><em>Enter a form key above (or add <code>?key=osf_…</code>
+      to the URL) to mount the embed.</em></p>
+
+    <!-- Static fallback form: always present in the raw HTML so the no-JS path
+         is testable. JS fills action + data-osf-* from ?key=; osf.js then
+         enhances it. The honeypot mirrors the admin snippet. -->
+    <form id="osf-fallback" method="post" data-osf-key="" data-osf-url="">
+      <label>Your email
+        <input type="email" name="email" required>
+      </label>
+      <label>Message
+        <textarea name="message" required></textarea>
+      </label>
+      <input type="text" name="_osf_hp" style="display:none" aria-hidden="true" tabindex="-1" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+
+    <noscript>
+      <div class="nojs">
+        <strong>JavaScript is off — this is the no-JS fallback form.</strong>
+        <p>Pure HTML cannot copy the <code>?key=</code> query value into the
+        form's <code>action</code>, so complete it by hand to test a no-JS
+        submit:</p>
+        <ol>
+          <li>Note this page's installation URL and the <code>key</code> from
+            its <code>?key=…</code> query string.</li>
+          <li>Set the form's <code>action</code> to
+            <code>INSTALLATION_URL/v1/form/YOUR_KEY/submit</code> — via the
+            browser's dev tools, or save this page and edit the HTML.</li>
+          <li>Submit. With <code>allow_nojs</code> off (default) a form without
+            a valid token returns an honest <code>400 javascript_required</code>
+            page; with it on, the browser navigates to a readable success/error
+            page.</li>
+        </ol>
+        <p>(Re-open this page with JavaScript enabled to get a ready-to-copy,
+        key-filled snippet under &ldquo;No-JS test snippet&rdquo; below.)</p>
+      </div>
+    </noscript>
+
+    <details id="nojs-help" hidden style="margin-top:1rem">
+      <summary><strong>No-JS test snippet</strong> (key filled in)</summary>
+      <p>Save this to an <code>.html</code> file and open it with JavaScript
+      disabled to exercise the native POST fallback:</p>
+      <pre class="snippet" id="nojs-snippet"></pre>
+    </details>
   </div>
   <div class="col">
     <h2>Event log</h2>
@@ -68,7 +124,7 @@
   <li><strong>Send another:</strong> restores a fresh, empty form and fetches a new
     token.</li>
   <li><strong>Field error:</strong> submit with an invalid email — an inline error
-    attaches to the email field, the input keeps its value,
+    attaches to the email field ONLY, the input keeps its value,
     <code>osf:error</code> (<code>invalid_email</code>) logs.</li>
   <li><strong>Form-level error:</strong> disable the form in the admin panel, then
     submit — a form-level error strip appears (<code>unknown_form</code>).</li>
@@ -81,10 +137,12 @@
     error and resets the widget.</li>
   <li><strong>Reduced motion:</strong> with the OS "reduce motion" setting on, the
     spinner does not animate.</li>
-  <li><strong>No-JS guarantee:</strong> open this page with JavaScript disabled and
-    submit — the browser navigates to a readable "Message sent" / error page with
-    a link back. (Delivery of a no-JS submission depends on the token policy —
-    see QUESTIONS.md.)</li>
+  <li><strong>No-JS guarantee:</strong> disable JavaScript and reload. The static
+    fallback form above still renders; follow the <em>no-JS fallback</em>
+    instructions it shows (or copy the key-filled snippet from &ldquo;No-JS test
+    snippet&rdquo; captured while JS was on) and submit — the browser navigates
+    to a readable page. (Delivery of a no-JS submission depends on the token
+    policy — see QUESTIONS.md.)</li>
   <li><strong>UI suppressed:</strong> append <code>&amp;ui=none</code> to the URL —
     no overlay/spinner/error UI renders, but the events still fire.</li>
 </ol>
@@ -106,25 +164,35 @@
     '<button type="submit">Mount form</button>' +
     '</form>';
 
+  var form = document.getElementById('osf-fallback');
+  var status = document.getElementById('mount-status');
+
   if (!key) {
+    // No key yet: the static form stays inert (no action), the config form
+    // above collects a key. osf.js is not loaded so it won't try to enhance.
     return;
   }
 
-  var mount = document.getElementById('mount');
-  var form = document.createElement('form');
-  form.setAttribute('action', base + '/v1/form/' + encodeURIComponent(key) + '/submit');
-  form.setAttribute('method', 'post');
+  // Complete the always-present static form from the query parameters. This is
+  // the same node osf.js will enhance and the same node that would POST
+  // natively if JS were off.
+  var submitUrl = base + '/v1/form/' + encodeURIComponent(key) + '/submit';
+  form.setAttribute('action', submitUrl);
   form.setAttribute('data-osf-key', key);
   form.setAttribute('data-osf-url', base);
-  if (uiNone) {
-    form.setAttribute('data-osf-ui', 'none');
-  }
-  form.innerHTML =
-    '<label>Your email <input type="email" name="email" required></label>' +
-    '<label>Message <textarea name="message" required></textarea></label>' +
-    '<button type="submit">Send</button>';
-  mount.innerHTML = '';
-  mount.appendChild(form);
+  if (uiNone) { form.setAttribute('data-osf-ui', 'none'); }
+  status.textContent = 'Mounted — key ' + key;
+
+  // Offer a ready-to-copy, key-filled static snippet for a genuine no-JS test.
+  var help = document.getElementById('nojs-help');
+  document.getElementById('nojs-snippet').textContent =
+    '<form action="' + submitUrl + '" method="post">\n' +
+    '  <label>Your email\n    <input type="email" name="email" required>\n  </label>\n' +
+    '  <label>Message\n    <textarea name="message" required></textarea>\n  </label>\n' +
+    '  <input type="text" name="_osf_hp" style="display:none" aria-hidden="true" tabindex="-1" autocomplete="off">\n' +
+    '  <button type="submit">Send</button>\n' +
+    '</form>';
+  help.hidden = false;
 
   ['osf:submit', 'osf:success', 'osf:error'].forEach(function (name) {
     form.addEventListener(name, function (e) {
@@ -132,7 +200,8 @@
     });
   });
 
-  // Load the embed script AFTER the form exists so its init() finds it.
+  // Load the embed script AFTER the form's attributes are set so its init()
+  // finds and enhances it.
   var s = document.createElement('script');
   s.src = base + '/embed/osf.js?v=' + encodeURIComponent(version);
   s.defer = true;
