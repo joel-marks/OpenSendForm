@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-09-03 (fix/tabnav-grey-and-stat-tones, Claude Code)
+Last updated: 2026-09-03 (fix/tabnav-match-header-surface, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -55,17 +55,25 @@ authenticated SMTP to the site owner.
   regression check (`AdminUiFieldWrapperAssertions`) asserts no visible control
   lacks an `.osf-field` ancestor. `.container` is layout-only by rule
   (max-width/padding/margin, never a `background`), enforced by DesignSystemTest.
-- **Header (two rows, DIFFERENT surfaces, no divider between them):** row 1
-  `.osf-header` = `--osf-bg-inset` (near-black); row 2 `.osf-tabnav` = `--osf-bg`
-  (the page background) with a single hairline `--osf-border` under it only.
-  Inner wrappers (`.osf-*-inner.container`) and `.osf-tab-link` are pinned
+- **Header (two rows, ONE shared surface, no divider between them):** row 1
+  `.osf-header` AND row 2 `.osf-tabnav` are BOTH `--osf-bg-inset`, in both
+  themes, with a single hairline `--osf-border` under row 2 only (the divider
+  between the header block and the page, not between the two rows). This is
+  an architect art-direction ruling (fix/tabnav-match-header-surface,
+  2026-09-03) that REVERSES fix/5d-polish-v3's two-different-surfaces
+  decision (row 2 was `--osf-bg`) — the prior split was correctly implemented
+  and pixel-verified twice; this is a spec change, not a bug fix. Inner
+  wrappers (`.osf-*-inner.container`) and `.osf-tab-link` are pinned
   `background: transparent`. Tabs are GitHub-UnderlineNav style with Lucide
   icons (currentColor); active = `--osf-text` on a 2px `--osf-tab-active`
-  underline. Neither bar is width-constrained; the `-inner` children align to
-  the content column. **VERIFIED this sprint (real Firefox, both themes):** the
-  painted pixels ARE the correct token surfaces — row 1 `#010409`, row 2
-  `#0d1117` (dark); `#f6f8fa`/`#ffffff` (light) — no grey `--osf-bg-raised`
-  anywhere. See "Header-grey diagnostic" below.
+  underline, inactive = `--osf-text-muted`, hover underline = `--osf-border` —
+  all reviewed against the darker `--osf-bg-inset` surface, no contrast
+  adjustment needed. Neither bar is width-constrained; the `-inner` children
+  align to the content column. **VERIFIED this sprint (real Firefox, both
+  themes):** every sampled pixel in both rows is `#010409` (dark) /
+  `#f6f8fa` (light) — one shared surface confirmed. See "Header-grey
+  diagnostic" below (superseded finding: it still holds, only the target
+  surface for row 2 changed).
 - **Versioned asset URLs (structural cache-busting, this sprint):** every
   `<link>`/`<script>` under `/assets/` emitted by the admin + installer
   layouts carries `?v=<Version::STRING>` via one shared helper
@@ -107,8 +115,12 @@ getComputedStyle dump and an `elementsFromPoint` walk over the tab row.
 `--osf-bg-raised` (`#151b23`) was painted, and no stray painter overlaps the
 row.** VERDICT: the code is proven correct on a clean profile — the operator's
 grey is STALE CACHED CSS. The versioned asset URLs above are the structural
-elimination of that failure mode. The diagnostic is committed as a repeatable
-(browser-download, non-CI) script: `tests/browser/header-surface-check.mjs`
+elimination of that failure mode. **Superseded (fix/tabnav-match-header-surface,
+2026-09-03):** row 2's TARGET token itself changed from `--osf-bg` to
+`--osf-bg-inset` per the one-surface art-direction ruling; the diagnostic
+script was updated to expect the new target and re-run clean in both themes.
+The diagnostic is committed as a repeatable (browser-download, non-CI)
+script: `tests/browser/header-surface-check.mjs`
 (run `npx playwright install firefox --with-deps`, `composer serve`, then
 `node tests/browser/header-surface-check.mjs`; exits non-zero on any deviation).
 

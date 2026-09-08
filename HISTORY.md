@@ -1640,3 +1640,69 @@
   the release exclusion lists (a direct consequence of introducing the dev-only
   Node manifest — keeps the "no Node in production" constraint clean; not a
   behavioural change).
+
+## 2026-09-03 — fix/tabnav-match-header-surface: architect ruling reverses the two-surface header split to one shared surface
+- Branch: fix/tabnav-match-header-surface (off main @ 9502746, after PR #28).
+  No new Composer dependencies (authorised: none).
+- THIS IS A SPEC REVERSAL, NOT A BUG FIX. fix/5d-polish-v3 (and its two
+  follow-up diagnostics, incl. last sprint's real-Firefox pixel check) had
+  CORRECTLY implemented and pixel-VERIFIED a two-row header on two DIFFERENT
+  surfaces: row 1 `.osf-header` on `--osf-bg-inset`, row 2 `.osf-tabnav` on
+  `--osf-bg`. The architect's operator art-direction ruling this sprint
+  overturns that decision on aesthetic grounds: the two rows must now read as
+  ONE shared surface block. Both rows are `--osf-bg-inset` in both themes.
+  Nothing about the prior implementation was wrong; the requirement changed.
+- TASK 1 — CSS: `.osf-tabnav` background changed from `var(--osf-bg)` to
+  `var(--osf-bg-inset)` in `public/assets/admin.css`. The single hairline
+  `border-bottom: 1px solid var(--osf-border)` stays on `.osf-tabnav` only
+  (the divider between the header block and the page below) — no divider was
+  ever between the two rows, and none was added. Updated the doc comment
+  above the header rules to record the one-surface ruling and date. Tab
+  states (active `--osf-text` + 2px `--osf-tab-active` underline, inactive
+  `--osf-text-muted`, hover underline `--osf-border`) were reviewed against
+  `--osf-bg-inset` in both themes: no adjustment needed — dark's near-black
+  inset (`#010409`) only *increases* contrast for muted text versus the
+  previous `--osf-bg` (`#0d1117`); light's inset (`#f6f8fa`) is a hairline off
+  pure white and `--osf-border` against it is the same combination already
+  used elsewhere in the header (e.g. the account-menu panel), so no new
+  contrast risk. No tab-state rule was changed.
+- TASK 2 — TESTS: `tests/Admin/DesignSystemTest.php` —
+  `testHeaderIsTwoRowsOnGithubAlignedSurfacesWithOneHairlineUnderTheSecond`
+  renamed to `testHeaderIsTwoRowsOnOneSharedSurfaceWithOneHairlineUnderTheSecond`
+  and rewritten: the tab-row assertion now requires the exact token
+  `background: var(--osf-bg-inset)` (previously `var(--osf-bg)`) and the
+  `--osf-bg-inset`-exclusion check on that block was removed (it's now the
+  required value, not a forbidden one); the `--osf-bg-raised` exclusion and
+  the single-hairline/no-divider/single-definition assertions are unchanged.
+  Updated a cross-reference comment on the header-surfaces-pinned test.
+- TASK 3 — BROWSER CHECK: `tests/browser/header-surface-check.mjs` — updated
+  its header comment and the three `tabnav` sample points to expect
+  `expInset`/`--osf-bg-inset` instead of `expBg`/`--osf-bg`. Ran it against
+  the real Firefox engine (already installed) with the existing seeded
+  `diag@example.com` dev admin and the already-running `composer serve`
+  instance: every sampled pixel passed in both themes —
+  dark: all six points `#010409` (row 1 and row 2 identical); light: all six
+  points `#f6f8fa` (row 1 and row 2 identical, matching the light palette's
+  `--osf-bg-raised` value too, which is expected/unrelated — token VALUES are
+  out of scope). Full PASS output:
+  ```
+  === THEME: dark (data-theme=dark) ===
+    PASS  header@40%..60%   got #010409  expect #010409 (--osf-bg-inset)
+    PASS  tabnav@60%..92%   got #010409  expect #010409 (--osf-bg-inset)
+  === THEME: light (data-theme=light) ===
+    PASS  header@40%..60%   got #f6f8fa  expect #f6f8fa (--osf-bg-inset)
+    PASS  tabnav@60%..92%   got #f6f8fa  expect #f6f8fa (--osf-bg-inset)
+  PASS: both header rows paint their token surfaces in both themes.
+  ```
+  Also eyeballed both theme screenshots: the header now reads as one
+  continuous block in both themes, the active-tab orange underline and
+  inactive/hover tab states remain clearly legible. Screenshots written to a
+  scratch directory outside the repo, not committed.
+- TASK 4 — INSTALLER: `templates/install/layout.php` uses `.osf-header` only
+  (no tab row) — untouched; installer test suite unaffected by this change.
+- Tests (466 tests, 3140 assertions, all green — same count as before this
+  sprint; no tests added or removed, only rewritten in place).
+- Docs: CONTEXT.md overwritten (design-system section updated to the
+  one-surface ruling), this HISTORY entry appended. QUESTIONS.md unchanged —
+  no architecture/security/scope blocker arose.
+- Deviations from prompt: none.
