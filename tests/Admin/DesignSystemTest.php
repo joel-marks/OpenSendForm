@@ -707,6 +707,50 @@ final class DesignSystemTest extends TestCase
         ];
     }
 
+    // --- Deletion controls: danger-toned, trash icon -----------------------
+
+    /**
+     * Every destructive control introduced by the deletion feature must carry
+     * the .osf-danger tone (never a hardcoded colour — that is separately
+     * enforced by testNoHardcodedColoursOutsideTokens) and the trash-2 glyph.
+     * The row controls also match the small-button tier of their neighbours.
+     */
+    public function testDeletionControlsAreDangerToned(): void
+    {
+        // Forms list: a small danger Delete link per row.
+        $formsList = self::read('templates/admin/forms_list.php');
+        self::assertMatchesRegularExpression(
+            '#/delete"[^>]*class="osf-danger osf-btn-sm"#',
+            $formsList,
+            'Forms row Delete must be a small danger control'
+        );
+
+        // Submissions list: a small danger Delete link per row, plus the
+        // danger-toned "Delete all" control near the filter bar.
+        $subsList = self::read('templates/admin/submissions.php');
+        self::assertMatchesRegularExpression(
+            '#/delete<\?= h\(\$returnQuery\) \?>"[^>]*class="osf-danger osf-btn-sm"#',
+            $subsList,
+            'Submissions row Delete must be a small danger control'
+        );
+        self::assertStringContainsString('delete-all', $subsList, 'A "Delete all" control must exist');
+
+        // The three confirm pages: a danger-toned destructive button + trash icon.
+        foreach ([
+            'form_delete_confirm',
+            'submission_delete_confirm',
+            'submissions_delete_all_confirm',
+        ] as $tpl) {
+            $html = self::read('templates/admin/' . $tpl . '.php');
+            self::assertMatchesRegularExpression(
+                '/<button type="submit" class="osf-danger"/',
+                $html,
+                "{$tpl}: the destructive button must be danger-toned"
+            );
+            self::assertStringContainsString("icon('trash-2')", $html, "{$tpl}: missing the trash glyph");
+        }
+    }
+
     // --- Admins: add-admin section spacing ----------------------------------
 
     public function testAddAdminSectionHasTopSpacing(): void

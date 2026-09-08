@@ -109,6 +109,59 @@ final class SubmissionRepository
     }
 
     /**
+     * Delete a single submission by id.
+     *
+     * @return int Number of rows deleted (0 or 1).
+     */
+    public function deleteById(int $id): int
+    {
+        $statement = $this->db->execute(
+            'DELETE FROM submissions WHERE id = :id',
+            ['id' => $id]
+        );
+
+        return $statement->rowCount();
+    }
+
+    /**
+     * Delete every submission belonging to one form. Used by the form-deletion
+     * cascade, which deletes submissions first (so the count is reportable)
+     * and then the form row.
+     *
+     * @return int Number of rows deleted.
+     */
+    public function deleteAllForForm(int $formId): int
+    {
+        $statement = $this->db->execute(
+            'DELETE FROM submissions WHERE form_id = :form_id',
+            ['form_id' => $formId]
+        );
+
+        return $statement->rowCount();
+    }
+
+    /**
+     * Delete submissions in bulk. With no status, every submission is removed;
+     * with a status, only rows in that status. The scope is status-only (never
+     * per form) — the admin "Delete all" respects the current STATUS filter.
+     *
+     * @return int Number of rows deleted.
+     */
+    public function deleteAll(?string $status = null): int
+    {
+        if ($status === null) {
+            return $this->db->execute('DELETE FROM submissions')->rowCount();
+        }
+
+        $statement = $this->db->execute(
+            'DELETE FROM submissions WHERE status = :status',
+            ['status' => $status]
+        );
+
+        return $statement->rowCount();
+    }
+
+    /**
      * Null the content column. Called on successful delivery when the
      * owning form's store_content is off, so the toggle governs retention
      * after a successful send rather than storage of the in-flight payload.

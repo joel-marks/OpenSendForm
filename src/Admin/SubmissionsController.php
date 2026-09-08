@@ -59,6 +59,9 @@ final class SubmissionsController
             'page'     => $page,
             'pages'    => $pages,
             'total'    => $total,
+            // "Delete all" is scoped by STATUS only (never the form filter), so
+            // its count can differ from $total when a form filter is active.
+            'deleteAllCount' => $submissions->countFiltered($status, null),
         ], 'submissions');
     }
 
@@ -146,7 +149,166 @@ final class SubmissionsController
         return self::redirectBack($response, $data);
     }
 
+    // --- Delete one -------------------------------------------------------
+
+    /**
+     * Confirmation step for deleting a single submission: shows its form name,
+     * date and status. The current filter is carried through (query params) so
+     * cancelling or completing returns to the same view.
+     */
+    public static function deleteConfirm(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $query = $request->getQueryParams();
+        $id = (int) ($args['id'] ?? 0);
+        $submission = self::submissions($c)->findById($id);
+
+        if ($submission === null) {
+            self::flash($c)->error('That submission no longer exists.');
+
+            return self::redirectBack($response, $query);
+        }
+
+        $return = self::filterFrom($query);
+        $form = self::forms($c)->findById((int) $submission['form_id']);
+        $formName = $form !== null ? (string) $form['name'] : ('#' . (int) $submission['form_id']);
+
+        return AdminView::renderPage($c, $response, 'submission_delete_confirm', [
+            'title'         => 'Delete submission',
+            'submissionId'  => $id,
+            'formName'      => $formName,
+            'createdAt'     => (string) $submission['created_at'],
+            'status'        => (string) $submission['status'],
+            'return'        => $return,
+            'backUrl'       => self::listUrl($return),
+        ], 'submissions');
+    }
+
+    public static function delete(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $data = self::formData($request);
+
+        if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::flash($c)->error('Your session expired. Please try again.');
+
+            return self::redirectBack($response, $data);
+        }
+
+        $id = (int) ($args['id'] ?? 0);
+        $deleted = self::submissions($c)->deleteById($id);
+
+        if ($deleted > 0) {
+            self::flash($c)->success("Submission #{$id} deleted.");
+        } else {
+            self::flash($c)->error('That submission no longer exists.');
+        }
+
+        return self::redirectBack($response, $data);
+    }
+
+    // --- Delete all (respects the current STATUS filter) ------------------
+
+    /**
+     * Confirmation step for bulk deletion. Scope is status-only: with a status
+     * filter active it targets just that status, otherwise every submission.
+     * The count is stated plainly. A zero-count scope bounces back (the list
+     * control is disabled in that state, so this is only a forged-link guard).
+     */
+    public static function deleteAllConfirm(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $query = $request->getQueryParams();
+        $status = self::cleanStatus($query['status'] ?? null);
+        $count = self::submissions($c)->countFiltered($status, null);
+
+        if ($count === 0) {
+            self::flash($c)->info('There are no submissions to delete.');
+
+            return self::redirectBack($response, $query);
+        }
+
+        return AdminView::renderPage($c, $response, 'submissions_delete_all_confirm', [
+            'title'  => 'Delete all submissions',
+            'status' => $status ?? '',
+            'count'  => $count,
+        ], 'submissions');
+    }
+
+    public static function deleteAll(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response
+    ): ResponseInterface {
+        $data = self::formData($request);
+
+        if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::flash($c)->error('Your session expired. Please try again.');
+
+            return self::redirectBack($response, $data);
+        }
+
+        $status = self::cleanStatus($data['status'] ?? null);
+        $deleted = self::submissions($c)->deleteAll($status);
+
+        self::flash($c)->success(sprintf(
+            'Deleted %d %ssubmission%s.',
+            $deleted,
+            $status === null ? '' : $status . ' ',
+            $deleted === 1 ? '' : 's'
+        ));
+
+        return self::redirectBack($response, $data);
+    }
+
     // --- Helpers ----------------------------------------------------------
+
+    /**
+     * Reduce a query/body array to the clean filter triple used for hidden
+     * fields and back-links (never echoed raw).
+     *
+     * @param array<string, mixed> $source
+     * @return array{status: string, form: string, page: string}
+     */
+    private static function filterFrom(array $source): array
+    {
+        $formId = self::cleanFormId($source['form'] ?? null);
+
+        return [
+            'status' => self::cleanStatus($source['status'] ?? null) ?? '',
+            'form'   => $formId === null ? '' : (string) $formId,
+            'page'   => (string) max(1, (int) ($source['page'] ?? 1)),
+        ];
+    }
+
+    /**
+     * Build a submissions-list URL from a clean filter triple.
+     *
+     * @param array{status: string, form: string, page: string} $filter
+     */
+    private static function listUrl(array $filter): string
+    {
+        $params = [];
+        if ($filter['status'] !== '') {
+            $params['status'] = $filter['status'];
+        }
+        if ($filter['form'] !== '') {
+            $params['form'] = $filter['form'];
+        }
+        if ((int) $filter['page'] > 1) {
+            $params['page'] = $filter['page'];
+        }
+
+        return '/admin/submissions' . ($params === [] ? '' : '?' . http_build_query($params));
+    }
 
     private static function retryMessage(int $id, string $result): string
     {

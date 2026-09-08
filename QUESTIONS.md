@@ -216,3 +216,17 @@
    misconfigured host degrades to accept-all + SMTP-arbitration rather than
    blocking. Noted in case the architect prefers a different bounded
    technique; no blocker.
+
+## feature/form-submission-deletion (2026-09-08)
+
+1. **`submissions:purge --status` + `--form` combination — decision recorded,
+   non-blocking.** The architect prescribed exactly three deletion repository
+   methods: `deleteById`, `deleteAllForForm(formId)` (form-scoped) and
+   `deleteAll(?status)` (status-scoped). Neither expresses the *intersection*
+   of a status AND a form, and the admin panel offers no status+form bulk
+   delete either (its "Delete all" is status-scoped only; form deletion
+   cascades a whole form). So `bin/osf submissions:purge` accepts `--status`
+   OR `--form` (or neither) but refuses the two together with a clear message
+   and nonzero exit, rather than silently ignoring one filter or adding an
+   off-contract repository method. Flag if a combined-filter purge is wanted;
+   it would need a new `deleteFiltered(status, formId)` method. No blocker.

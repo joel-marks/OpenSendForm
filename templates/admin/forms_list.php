@@ -66,6 +66,7 @@ use function OpenSendForm\Admin\icon;
                                 <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
                                 <button type="submit" class="<?= $active ? 'osf-danger' : 'secondary' ?> osf-btn-sm osf-btn-equal"><?= $active ? 'Disable' : 'Enable' ?></button>
                             </form>
+                            <a href="/admin/forms/<?= h((string) $id) ?>/delete" role="button" class="osf-danger osf-btn-sm"><?= icon('trash-2') ?> Delete</a>
                         </div>
                     </td>
                 </tr>

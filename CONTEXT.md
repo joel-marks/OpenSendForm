@@ -1,6 +1,6 @@
 # OpenSendForm — current state
 
-Last updated: 2026-09-08 (fix/forms-table-scroll-and-stat-links, Claude Code)
+Last updated: 2026-09-08 (feature/form-submission-deletion, Claude Code)
 
 ## Status
 The service is end-to-end: a versioned v1 API drives an ordered
@@ -8,11 +8,12 @@ validation/abuse pipeline; passing submissions are stored and relayed by
 authenticated SMTP (in-request send + operator retry sweep). Full admin panel
 (auth, 2FA, forms/submissions CRUD, mail-setup wizard, browser installer), a
 client-site embed artefact with a no-JS fallback, dev tooling, an explicit
-migration command, guarded admin deletion and release packaging (v0.1.0 zip +
-`.htaccess` set + `bin/osf version`) are all built and merged to main. The
+migration command, guarded admin deletion, form + submission deletion (web +
+CLI) and release packaging (v0.1.0 zip + `.htaccess` set + `bin/osf version`)
+are all built and merged to main. The
 design system is a bespoke `--osf-*` token contract with a two-row
 GitHub-aligned header on ONE shared surface, Dark/Light/Auto theme, vendored
-Lucide icons and responsive card-collapse tables. Suite green (483 tests).
+Lucide icons and responsive card-collapse tables. Suite green (518 tests).
 CI runs tests + a package build/verify on every PR/push.
 
 ## Product definition
@@ -123,6 +124,14 @@ Locked by SubmitPipelineOrderTest. The stage ORDER is locked.
 
 ## Other subsystems — condensed; see HISTORY
 - Admin deletion: hard-delete + reversible deactivate; three guards.
+- Form/submission deletion: repos expose `SubmissionRepository::deleteById/
+  deleteAllForForm/deleteAll(?status)` + `FormRepository::deleteForm` (row
+  only). Web rows get a danger Delete + GET-confirm→POST-CSRF flow; deleting a
+  form CASCADES to its submissions (submissions-first so both counts flash),
+  confirm states the exact count. Submissions add a status-scoped "Delete all"
+  (disabled at zero). CLI: `form:delete ID` + `submissions:purge [--status]
+  [--form]` (filters not combinable — QUESTIONS.md). Deleted form's key →
+  existing unknown_form.
 - No-JS policy: migration 009 `forms.allow_nojs` governs the honest
   `javascript_required` on the HTML path.
 - Dev tooling: `composer serve` → `public/dev-router.php`; `bin/osf migrate`
@@ -147,9 +156,9 @@ Locked by SubmitPipelineOrderTest. The stage ORDER is locked.
   verified by ad-hoc headless-browser checks, not CI (no DOM harness by policy).
 
 ## Open items
-None blocking. QUESTIONS.md carries prior resolved/non-blocking notes plus two
-new non-blocking notes this sprint (Task 4 bug non-reproduction; bounded-DNS
-mechanism choice).
+None blocking. QUESTIONS.md carries prior resolved/non-blocking notes plus one
+new non-blocking note this sprint (`submissions:purge` --status/--form not
+combinable, given the status-only / form-only repository deletion contract).
 
 ## Planned increment sequence
 0–8 (skeleton → schema → pipeline → SMTP → Turnstile → admin auth → design
