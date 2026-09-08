@@ -210,4 +210,45 @@ final class FormRepositoryTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->repo()->createForm('   ', 'owner@example.com', ['https://example.com']);
     }
+
+    // --- Deletion + cascade counts ----------------------------------------
+
+    public function testDeleteFormRemovesTheRowAndReportsCount(): void
+    {
+        $repo = $this->repo();
+        $form = $repo->createForm('Contact', 'owner@example.com', ['https://example.com']);
+
+        self::assertSame(1, $repo->deleteForm($form['id']));
+        self::assertNull($repo->findById($form['id']));
+        // A second delete reports zero — nothing left to remove.
+        self::assertSame(0, $repo->deleteForm($form['id']));
+    }
+
+    public function testDeleteFormCascadeCountsMatchStoredSubmissions(): void
+    {
+        // The controller/CLI orchestrate the cascade: delete submissions first
+        // (reporting the count), then the form row. Prove the two repositories
+        // compose to exactly that against a shared database.
+        $db = Database::connect('sqlite::memory:');
+        (new MigrationRunner($db, dirname(__DIR__, 2) . '/migrations'))->migrate();
+
+        $forms = new FormRepository($db);
+        $subs = new \OpenSendForm\Submission\SubmissionRepository($db);
+
+        $target = $forms->createForm('Target', 'target@example.com', ['https://target.example.com']);
+        $other = $forms->createForm('Other', 'other@example.com', ['https://other.example.com']);
+
+        $subs->recordSubmission($target['id'], '203.0.113.7', null, null);
+        $subs->recordSubmission($target['id'], '203.0.113.7', null, null);
+        $subs->recordSubmission($other['id'], '203.0.113.7', null, null);
+
+        $deletedSubs = $subs->deleteAllForForm($target['id']);
+        $deletedForm = $forms->deleteForm($target['id']);
+
+        self::assertSame(2, $deletedSubs);
+        self::assertSame(1, $deletedForm);
+        // The other form and its submission are untouched.
+        self::assertNotNull($forms->findById($other['id']));
+        self::assertSame(1, $subs->countFiltered(null, $other['id']));
+    }
 }

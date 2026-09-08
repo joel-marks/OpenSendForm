@@ -259,6 +259,23 @@ final class FormRepository
     }
 
     /**
+     * Delete a form row by id. Does NOT touch its submissions — the caller
+     * (controller/CLI) orchestrates the cascade, deleting submissions first so
+     * it can report how many were destroyed. Kept deliberately narrow.
+     *
+     * @return int Number of form rows deleted (0 or 1).
+     */
+    public function deleteForm(int $id): int
+    {
+        $statement = $this->db->execute(
+            'DELETE FROM forms WHERE id = :id',
+            ['id' => $id]
+        );
+
+        return $statement->rowCount();
+    }
+
+    /**
      * @throws InvalidArgumentException if the name is empty after trimming.
      */
     private function normaliseName(string $name): string

@@ -104,15 +104,33 @@ final class AdminRoutes
                 ->add($auth);
             $group->post('/forms/{id}/disable', self::handlerWithArgs($container, [FormsController::class, 'disable']))
                 ->add($auth);
+            $group->get('/forms/{id}/delete', self::handlerWithArgs($container, [FormsController::class, 'deleteConfirm']))
+                ->add($auth);
+            $group->post('/forms/{id}/delete', self::handlerWithArgs($container, [FormsController::class, 'delete']))
+                ->add($auth);
 
             // Submissions.
             $group->get('/submissions', self::handler($container, [SubmissionsController::class, 'index']))
                 ->add($auth);
             $group->post('/submissions/retry-due', self::handler($container, [SubmissionsController::class, 'retryDue']))
                 ->add($auth);
+            // Bulk-delete (literal path) is registered before the {id} routes so
+            // "delete-all" is never mistaken for a submission id.
+            $group->get('/submissions/delete-all', self::handler($container, [SubmissionsController::class, 'deleteAllConfirm']))
+                ->add($auth);
+            $group->post('/submissions/delete-all', self::handler($container, [SubmissionsController::class, 'deleteAll']))
+                ->add($auth);
             $group->post(
                 '/submissions/{id}/retry',
                 self::handlerWithArgs($container, [SubmissionsController::class, 'retry'])
+            )->add($auth);
+            $group->get(
+                '/submissions/{id}/delete',
+                self::handlerWithArgs($container, [SubmissionsController::class, 'deleteConfirm'])
+            )->add($auth);
+            $group->post(
+                '/submissions/{id}/delete',
+                self::handlerWithArgs($container, [SubmissionsController::class, 'delete'])
             )->add($auth);
 
             // Dashboard is the group root: /admin.

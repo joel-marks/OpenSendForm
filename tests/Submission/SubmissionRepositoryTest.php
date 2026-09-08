@@ -95,6 +95,70 @@ final class SubmissionRepositoryTest extends TestCase
         self::assertSame(2, $this->countFor($longForm['id']));
     }
 
+    // --- Deletion ---------------------------------------------------------
+
+    public function testDeleteByIdRemovesOnlyThatRow(): void
+    {
+        $forms = new FormRepository($this->db);
+        $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $subs = new SubmissionRepository($this->db);
+
+        $keep = $subs->recordSubmission($form['id'], '203.0.113.7', null, null);
+        $drop = $subs->recordSubmission($form['id'], '203.0.113.7', null, null);
+
+        self::assertSame(1, $subs->deleteById($drop));
+        self::assertNull($subs->findById($drop));
+        self::assertNotNull($subs->findById($keep));
+        // Deleting a vanished row reports zero.
+        self::assertSame(0, $subs->deleteById($drop));
+    }
+
+    public function testDeleteAllForFormRemovesOnlyThatFormsRows(): void
+    {
+        $forms = new FormRepository($this->db);
+        $a = $forms->createForm('A', 'a@example.com', ['https://a.example.com']);
+        $b = $forms->createForm('B', 'b@example.com', ['https://b.example.com']);
+        $subs = new SubmissionRepository($this->db);
+
+        $subs->recordSubmission($a['id'], '203.0.113.7', null, null);
+        $subs->recordSubmission($a['id'], '203.0.113.7', null, null);
+        $subs->recordSubmission($b['id'], '203.0.113.7', null, null);
+
+        self::assertSame(2, $subs->deleteAllForForm($a['id']));
+        self::assertSame(0, $this->countFor($a['id']));
+        self::assertSame(1, $this->countFor($b['id']));
+    }
+
+    public function testDeleteAllWithoutStatusRemovesEverything(): void
+    {
+        $forms = new FormRepository($this->db);
+        $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $subs = new SubmissionRepository($this->db);
+
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'received');
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'failed');
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'dead');
+
+        self::assertSame(3, $subs->deleteAll());
+        self::assertSame(0, $this->countFor($form['id']));
+    }
+
+    public function testDeleteAllWithStatusRemovesOnlyThatStatus(): void
+    {
+        $forms = new FormRepository($this->db);
+        $form = $forms->createForm('Contact', 'owner@example.com', ['https://example.com']);
+        $subs = new SubmissionRepository($this->db);
+
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'received');
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'failed');
+        $subs->recordSubmission($form['id'], '203.0.113.7', null, null, null, 'failed');
+
+        self::assertSame(2, $subs->deleteAll('failed'));
+        self::assertSame(1, $this->countFor($form['id']));
+        self::assertSame(0, $subs->countByStatus('failed'));
+        self::assertSame(1, $subs->countByStatus('received'));
+    }
+
     private function setRetention(int $formId, int $days): void
     {
         $this->db->execute(

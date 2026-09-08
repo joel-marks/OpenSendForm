@@ -267,6 +267,21 @@ final class SubmitEndpointTest extends TestCase
         self::assertSame('unknown_form', $this->json($response)['error']['code']);
     }
 
+    public function testDeletedFormKeyNoLongerResolves(): void
+    {
+        // A deleted form's key must fall through to the same unknown-form
+        // behaviour as any unrecognised key — the embed snippet dies naturally.
+        $key = $this->form['form_key'];
+        $this->forms->deleteForm($this->form['id']);
+
+        $response = $this->handle($this->submitRequest([
+            'name' => 'Ada',
+        ], ['form_key' => $key]));
+
+        self::assertSame(403, $response->getStatusCode());
+        self::assertSame('unknown_form', $this->json($response)['error']['code']);
+    }
+
     public function testInactiveFormKeyReturns403(): void
     {
         $this->forms->setActive($this->form['id'], false);

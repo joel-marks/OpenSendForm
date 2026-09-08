@@ -7,6 +7,7 @@ namespace OpenSendForm\Admin;
 use InvalidArgumentException;
 use OpenSendForm\Auth\Csrf;
 use OpenSendForm\Form\FormRepository;
+use OpenSendForm\Submission\SubmissionRepository;
 use OpenSendForm\Version;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -189,6 +190,93 @@ final class FormsController
         }
 
         return self::redirect($response, '/admin/forms');
+    }
+
+    // --- Delete (cascades to submissions) ---------------------------------
+
+    /**
+     * Confirmation step: shows the form's name, its public key and the EXACT
+     * number of submissions that deleting it will destroy (zero included). A
+     * forged link to a non-existent form bounces back with an explanation.
+     * Both active and disabled forms are deletable — the only gate is this
+     * confirmation.
+     */
+    public static function deleteConfirm(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $form = self::forms($c)->findById((int) ($args['id'] ?? 0));
+        if ($form === null) {
+            self::flash($c)->error('That form no longer exists.');
+
+            return self::redirect($response, '/admin/forms');
+        }
+
+        return self::renderDeleteConfirm($c, $response, $form);
+    }
+
+    /**
+     * Executes the cascade delete: submissions first (so the count is known),
+     * then the form row. The form is re-resolved here regardless of what the
+     * confirmation screen showed, so a forged POST for a vanished form simply
+     * bounces back.
+     */
+    public static function delete(
+        ContainerInterface $c,
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        array $args
+    ): ResponseInterface {
+        $data = self::formData($request);
+        if (!self::csrf($c)->validate($data['_csrf'] ?? null)) {
+            self::flash($c)->error('Your session expired. Please try again.');
+
+            return self::redirect($response, '/admin/forms');
+        }
+
+        $form = self::forms($c)->findById((int) ($args['id'] ?? 0));
+        if ($form === null) {
+            self::flash($c)->error('That form no longer exists.');
+
+            return self::redirect($response, '/admin/forms');
+        }
+
+        $id = (int) $form['id'];
+        // Submissions first so the reported count reflects what was destroyed;
+        // then the form row itself.
+        $submissionsDeleted = self::submissions($c)->deleteAllForForm($id);
+        self::forms($c)->deleteForm($id);
+
+        self::flash($c)->success(sprintf(
+            'Deleted form "%s" and its %d stored submission%s.',
+            $form['name'],
+            $submissionsDeleted,
+            $submissionsDeleted === 1 ? '' : 's'
+        ));
+
+        return self::redirect($response, '/admin/forms');
+    }
+
+    /**
+     * @param array<string, mixed> $form
+     */
+    private static function renderDeleteConfirm(
+        ContainerInterface $c,
+        ResponseInterface $response,
+        array $form
+    ): ResponseInterface {
+        $id = (int) $form['id'];
+        $count = self::submissions($c)->countFiltered(null, $id);
+
+        return AdminView::renderPage($c, $response, 'form_delete_confirm', [
+            'title'            => 'Delete form',
+            'formId'           => $id,
+            'formName'         => (string) $form['name'],
+            'formKey'          => (string) $form['form_key'],
+            'submissionCount'  => $count,
+        ], 'forms');
     }
 
     // --- Input marshalling ------------------------------------------------
@@ -386,6 +474,14 @@ final class FormsController
     {
         /** @var FormRepository $r */
         $r = $c->get(FormRepository::class);
+
+        return $r;
+    }
+
+    private static function submissions(ContainerInterface $c): SubmissionRepository
+    {
+        /** @var SubmissionRepository $r */
+        $r = $c->get(SubmissionRepository::class);
 
         return $r;
     }

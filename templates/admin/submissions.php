@@ -1,5 +1,6 @@
 <?php
 use function OpenSendForm\Admin\h;
+use function OpenSendForm\Admin\icon;
 use function OpenSendForm\Admin\truncate;
 use function OpenSendForm\Admin\statusBadgeClass;
 
@@ -22,12 +23,24 @@ use function OpenSendForm\Admin\statusBadgeClass;
  * @var int      $total
  * @var string   $csrf
  */
-// Hidden fields that let a retry action return to this exact view.
+// Hidden fields that let a retry/delete action return to this exact view.
 $return = [
     'status' => $status,
     'form'   => $formId === null ? '' : (string) $formId,
     'page'   => (string) $page,
 ];
+// Query string carrying the current filter onto a per-row delete-confirm link.
+$returnParams = [];
+if ($status !== '') {
+    $returnParams['status'] = $status;
+}
+if ($formId !== null) {
+    $returnParams['form'] = (string) $formId;
+}
+if ($page > 1) {
+    $returnParams['page'] = (string) $page;
+}
+$returnQuery = $returnParams === [] ? '' : '?' . http_build_query($returnParams);
 ?>
 <h1>Submissions</h1>
 
@@ -56,13 +69,31 @@ $return = [
         </div>
     </form>
 
-    <form method="post" action="/admin/submissions/retry-due" class="osf-inline-form">
-        <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-        <input type="hidden" name="status" value="<?= h($return['status']) ?>">
-        <input type="hidden" name="form" value="<?= h($return['form']) ?>">
-        <input type="hidden" name="page" value="<?= h($return['page']) ?>">
-        <button type="submit" class="secondary">Retry all due now</button>
-    </form>
+    <div class="osf-actions">
+        <form method="post" action="/admin/submissions/retry-due" class="osf-inline-form">
+            <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+            <input type="hidden" name="status" value="<?= h($return['status']) ?>">
+            <input type="hidden" name="form" value="<?= h($return['form']) ?>">
+            <input type="hidden" name="page" value="<?= h($return['page']) ?>">
+            <button type="submit" class="secondary">Retry all due now</button>
+        </form>
+
+        <?php
+        // "Delete all" respects the current STATUS filter only (never the form
+        // filter). Disabled when there is nothing in scope to delete — no
+        // dead-end confirm page for zero rows.
+        $deleteAllLabel = $status !== ''
+            ? 'Delete all ' . h($status) . ' submissions (' . h((string) $deleteAllCount) . ')'
+            : 'Delete all submissions (' . h((string) $deleteAllCount) . ')';
+        $deleteAllUrl = '/admin/submissions/delete-all'
+            . ($status !== '' ? '?status=' . rawurlencode($status) : '');
+        ?>
+        <?php if ($deleteAllCount > 0): ?>
+            <a href="<?= h($deleteAllUrl) ?>" role="button" class="osf-danger"><?= icon('trash-2') ?> <?= $deleteAllLabel ?></a>
+        <?php else: ?>
+            <button type="button" class="osf-danger" disabled title="No submissions to delete."><?= icon('trash-2') ?> <?= $deleteAllLabel ?></button>
+        <?php endif; ?>
+    </div>
 </div>
 
 <p><small><?= h((string) $total) ?> submission(s) match.</small></p>
@@ -109,18 +140,20 @@ $return = [
                         <?php endif; ?>
                     </td>
                     <td data-label="Actions">
-                        <?php if ($retryable): ?>
-                            <form class="osf-inline-form" method="post"
-                                  action="/admin/submissions/<?= h((string) $row['id']) ?>/retry">
-                                <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
-                                <input type="hidden" name="status" value="<?= h($return['status']) ?>">
-                                <input type="hidden" name="form" value="<?= h($return['form']) ?>">
-                                <input type="hidden" name="page" value="<?= h($return['page']) ?>">
-                                <button type="submit" class="osf-btn-sm">Retry</button>
-                            </form>
-                        <?php else: ?>
-                            <span aria-hidden="true">—</span>
-                        <?php endif; ?>
+                        <div class="osf-actions">
+                            <?php if ($retryable): ?>
+                                <form class="osf-inline-form" method="post"
+                                      action="/admin/submissions/<?= h((string) $row['id']) ?>/retry">
+                                    <input type="hidden" name="_csrf" value="<?= h($csrf) ?>">
+                                    <input type="hidden" name="status" value="<?= h($return['status']) ?>">
+                                    <input type="hidden" name="form" value="<?= h($return['form']) ?>">
+                                    <input type="hidden" name="page" value="<?= h($return['page']) ?>">
+                                    <button type="submit" class="osf-btn-sm">Retry</button>
+                                </form>
+                            <?php endif; ?>
+                            <a href="/admin/submissions/<?= h((string) $row['id']) ?>/delete<?= h($returnQuery) ?>"
+                               role="button" class="osf-danger osf-btn-sm"><?= icon('trash-2') ?> Delete</a>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

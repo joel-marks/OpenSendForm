@@ -1903,3 +1903,45 @@ all-active form set.
 - Docs: CONTEXT.md overwritten; this HISTORY entry appended. QUESTIONS.md
   unchanged — no architecture/security/scope blocker arose.
 - Deviations from prompt: none.
+
+## 2026-09-08 — Form & submission deletion (feature/form-submission-deletion)
+- Branch: feature/form-submission-deletion (off latest main). No new Composer
+  deps (task authorised none).
+- Repositories (prepared statements, portable sqlite+mysql, return row counts):
+  `SubmissionRepository::deleteById`, `deleteAllForForm(formId)`,
+  `deleteAll(?status)` (null = every submission; a status = only that status);
+  `FormRepository::deleteForm(id)` (row only — the controller/CLI orchestrate
+  the cascade so counts are reportable).
+- Form deletion (web): forms list gains a danger `.osf-btn-sm` Delete link
+  (outside the equal-width Edit/Disable group, same height). GET
+  `/admin/forms/{id}/delete` renders `form_delete_confirm` stating the form
+  name, key and the EXACT submission count that will be destroyed (0 phrased
+  "its 0 stored submissions"). POST (CSRF) cascades submissions-first-then-form,
+  flashes both counts, redirects to the list. Active AND disabled forms are
+  deletable — confirmation is the only gate.
+- Submission deletion (web): submissions table gains a per-row danger
+  `.osf-btn-sm` Delete (same tier as Retry) and a danger "Delete all" control
+  in the toolbar that respects the CURRENT STATUS filter ("Delete all <status>
+  submissions (N)" / "Delete all submissions (N)"), disabled at zero count (no
+  dead-end confirm). GET confirm pages (`submission_delete_confirm`,
+  `submissions_delete_all_confirm`) state the scope/count; POSTs (CSRF) delete
+  and redirect preserving the filter. Delete-all is status-scoped only (never
+  the form filter), matching the `deleteAll(?status)` contract.
+- Routes: literal `/admin/submissions/delete-all` registered before the
+  `/{id}` routes so it is never parsed as an id.
+- Embed: a deleted form's key dies naturally — `findByKey` returns null →
+  existing `unknown_form` 403 on the submit endpoint (regression test added).
+- CLI: `bin/osf form:delete ID` (cascade, prints form + submission count, no
+  prompt — shell access is the higher privilege, matching admin:delete) and
+  `bin/osf submissions:purge [--status=STATUS] [--form=ID]` (prints the count;
+  --status and --form cannot be combined — see QUESTIONS.md). Both refuse
+  unknown/non-numeric IDs with a clear message and nonzero exit. Usage updated.
+- Tests: repository deletion + cascade counts (SubmissionRepositoryTest,
+  FormRepositoryTest); HTTP flows incl. confirm-page counts, CSRF rejection,
+  cascade, filter preservation, delete-all scope/disabled-state, field-wrapper
+  audit on the new confirm pages (DeletionHttpTest); deleted-form-key
+  regression (SubmitEndpointTest); CLI incl. unknown-ID refusal (CliDeleteTest);
+  danger-tone design-system check (DesignSystemTest). Full suite green
+  (518 tests, 3354 assertions).
+- Out of scope (untouched): admin account deletion, retention-purge,
+  soft-delete/undo, audit logging, the embed, the pipeline, tokens.css.
