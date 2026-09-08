@@ -191,3 +191,28 @@
    contract) and `vendor/qrcode.js`; `public/embed/osf.js` is out of scope by
    the sprint's scope fence. Flagged so the chosen enforcement boundary is on
    record.
+
+## fix/delivery-sweep-dns-timeout-field-errors (2026-09-08)
+
+1. **Task 4 field-scoped errors — reported bug did NOT reproduce, non-blocking.**
+   The sprint prompt described `invalid_email` rendering "under EVERY field".
+   A headless (Firefox) DOM check of both the committed HEAD `osf.js` and the
+   updated version showed each email error already attaching to ONLY the email
+   field, with unmapped codes (e.g. `rate_limited`) rendering solely in the
+   form-level strip — i.e. current `main` was already field-scoped. The change
+   shipped anyway converts the inline `if` to an explicit self-documenting
+   `FIELD_FOR_CODE` map (as the ruling asked) and hardens/future-proofs it,
+   but it is not a behavioural fix. Flagged only so the record is accurate; no
+   architect input needed. If the operator can still reproduce per-field
+   duplication, it is almost certainly a STALE CACHED `osf.js` (the embed asset
+   is served `immutable` with a `?v=` bust) rather than a code defect.
+
+2. **Bounded DNS mechanism — decision recorded, non-blocking.** Task 3 was
+   implemented as a raw-UDP bounded DNS client (`BoundedDnsChecker` +
+   `UdpDnsTransport`) rather than a bounded subprocess, because a `php -r`
+   subprocess is unreliable on shared hosting under mod_php/FPM (`PHP_BINARY`
+   is the SAPI binary, not a CLI). The UDP client fails open on anything
+   inconclusive (incl. no readable `/etc/resolv.conf`), so a firewalled or
+   misconfigured host degrades to accept-all + SMTP-arbitration rather than
+   blocking. Noted in case the architect prefers a different bounded
+   technique; no blocker.

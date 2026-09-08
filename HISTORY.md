@@ -1706,3 +1706,113 @@
   one-surface ruling), this HISTORY entry appended. QUESTIONS.md unchanged —
   no architecture/security/scope blocker arose.
 - Deviations from prompt: none.
+
+## 2026-09-08 — fix/delivery-sweep-dns-timeout-field-errors: five operator-found defects
+
+Branch: `fix/delivery-sweep-dns-timeout-field-errors` off `main`. No new
+Composer dependencies (none authorised). An operator eyes-on play-through of
+the embed + delivery path surfaced four correctness defects and one
+test-harness gap; all fixed.
+
+- TASK 1 — STRANDED 'received' SUBMISSIONS (high). A submission accepted while
+  `MAIL_ENABLED=0` (or with SMTP unavailable pre-attempt) stays 'received'
+  with attempts=0; `mail:retry` only swept 'failed', so enabling mail later
+  never delivered it. `SubmissionRepository::findDueForRetry` now also returns
+  `received` rows with `attempts = 0`, treated as immediately due (no backoff —
+  they have never been attempted). `DeliveryService::attemptDelivery` skips a
+  `received` row untouched when mail cannot be sent (`mailEnabled() &&
+  smtpHost() !== ''`, mirroring `DeliveryStage`), so a disabled sweep never
+  burns an attempt or schedules a retry it cannot make. Admin per-row Retry
+  now accepts `received` (`SubmissionsController` guard + `retryMessage`
+  SKIPPED case; `submissions.php` `$retryable`); `bin/osf` cmdMailRetry
+  docblock + usage text updated. Tests added to `DeliveryServiceTest`:
+  received+mail-enabled → sent; received+mail-disabled → skipped and remains
+  'received' (attempts 0, no next_attempt_at, mailer not called).
+  PROVEN AGAINST DEV #7: restored #7 to its received specimen state and ran
+  the real CLI — `mail:retry — attempted 1: sent 1, failed 0, dead 0,
+  skipped 0`; #7 is now `sent` (attempts=1). The seeded 'failed' rows 3–5
+  were correctly NOT swept (attempted 1, not 4), which is exactly the Task 2
+  artifact below.
+
+- TASK 2 — RETRY SWEEP INVESTIGATION. VERDICT: **seeded-data artifact, not a
+  due-computation bug.** Dev rows 3,4,5 (failed, attempts=2, error "SMTP
+  connect timeout") and row 6 (dead, attempts=5) all had
+  `last_attempt_at = NULL` AND `next_attempt_at = NULL` AND `content = NULL`.
+  A real failure ALWAYS goes through `markFailed`, which sets both
+  `last_attempt_at` and `next_attempt_at`; `findDueForRetry`'s failed branch
+  correctly requires `next_attempt_at IS NOT NULL`, so these malformed rows
+  were rightly skipped — they were seeded without the scheduling fields real
+  failures get. PROOF: created a REAL failure on the live dev DB via the
+  production `DeliveryService`+`PhpMailerMailer` pointed at `badhost.invalid`
+  ("SMTP Error: Could not connect to SMTP host") — it recorded
+  `last_attempt_at=2026-09-08 05:52:50`, `next_attempt_at=…05:53:50` (+1 min
+  backoff), and `retryDue()` with an elapsed cutoff then delivered it via
+  Mailpit → sent. The malformed seed rows 3,4,5,6 were purged so the dev
+  dashboard reflects reality (now 8 sent, 0 failed, 0 dead, 0 received after
+  #7 delivery). No code change; regression coverage for real due-computation
+  already exists in `DeliveryServiceTest` (unchanged).
+
+- TASK 3 — DNS TIMEOUT ON EMAIL VALIDATION. `checkdnsrr`/`dns_get_record`
+  accept no timeout, so an unreachable domain held submitters ~16 s.
+  MECHANISM CHOSEN: a bounded raw-UDP DNS client, not a subprocess. Rationale:
+  a `php -r` subprocess is unreliable on shared hosting under mod_php/FPM
+  (`PHP_BINARY` points at the SAPI binary, not a CLI that runs `-r`), whereas
+  a UDP query to the system resolver is self-contained, needs no shell, and
+  is exactly what the stub resolver does anyway. New `BoundedDnsChecker`
+  (implements `DnsChecker`) speaks DNS over `UdpDnsTransport` (a `DnsTransport`
+  seam for testing), reading nameservers from `/etc/resolv.conf`. The whole
+  MX-then-A lookup shares ONE deadline (`DEFAULT_TIMEOUT = 3.0` s total,
+  across every nameserver and both queries). FAIL-OPEN: only a definitive
+  negative (NOERROR with no MX and no A, or NXDOMAIN) rejects — exactly as
+  `checkdnsrr` did; every inconclusive outcome (timeout, socket error,
+  SERVFAIL/REFUSED, malformed/mismatched/truncated reply, or no configured
+  nameserver) ACCEPTS and lets SMTP be the arbiter. Wired as the AppFactory
+  default (`BoundedDnsChecker::fromSystem()`), replacing the now-removed
+  unbounded `SystemDnsChecker`. Tests (`BoundedDnsCheckerTest`, 13): MX
+  accepts; A fallback; authoritative-negative rejects; NXDOMAIN rejects;
+  timeout/SERVFAIL/truncated/no-nameserver fail open; empty domain rejects;
+  total bound respected (real wall-clock < 0.9 s against a 0.4 s budget with a
+  transport that burns its budget on every nameserver+query); packet
+  encode/interpret unit tests. `FakeDnsTransport` added to tests/Support.
+
+- TASK 4 — FIELD-SCOPED ERRORS IN osf.js. `showError` rewritten to an explicit
+  `FIELD_FOR_CODE` map (invalid_email/email_domain_invalid → the email input;
+  unmapped codes → form-level strip only). FINDING (recorded honestly): the
+  reported "same message under EVERY field" duplication DID NOT reproduce on
+  current `main` — a headless (Firefox) DOM check of BOTH the committed HEAD
+  osf.js and this version showed each email error attaching to ONLY the email
+  field and `rate_limited` showing only the form strip. This change hardens
+  and self-documents the mapping; it is not a behavioural fix. Client-side
+  presentation only (frozen JSON contract untouched). osf.js is 16034 bytes,
+  under the 16384 EmbedAssetTest ceiling; `node --check` clean. See
+  QUESTIONS.md for the non-reproduction note. Code→field map:
+  `invalid_email → email`, `email_domain_invalid → email`; all other codes →
+  form-level strip.
+
+- TASK 5 — MANUAL-HARNESS NO-JS MODE. `tests/embed-manual.html` mounted the
+  form entirely via JS, so with JS off no form existed. DECISION (recorded):
+  pure HTML cannot read the `?key=` query value into a form's `action`, and
+  the harness must not server-render, so completing the action needs JS. Best
+  achievable: the form is now STATIC in the raw HTML (same shape as the admin
+  snippet, `_osf_hp` honeypot included) and ALWAYS renders. With JS on, the
+  inline script completes its `action` + `data-osf-*` from `?key=` and osf.js
+  enhances it (event log + key-input config form unchanged); with JS off, the
+  form still renders and a visible `<noscript>` block states plainly how to
+  finish the action by hand, plus a JS-rendered key-filled copy-ready snippet
+  for a genuine no-JS submit. Verified in Firefox both ways: JS-off renders
+  form+honeypot+instructions (action left null, as documented); JS-on sets the
+  action to `…/v1/form/<key>/submit`. EmbedAssetTest still green (dev-only
+  serving + 'embed manual test' string preserved).
+
+- TASK 6 — HOUSEKEEPING. Deleted `public/nojs-test.html` (untracked operator
+  scratch file); confirmed nothing referenced it.
+
+- Tests: full PHPUnit suite green — 481 tests, 3176 assertions (was 466; +15
+  new: 2 DeliveryService, 13 BoundedDnsChecker). Browser DOM/harness checks
+  ran outside CI (no DOM harness in the repo by policy) and were not
+  committed.
+- Docs: CONTEXT.md overwritten; this HISTORY entry appended; QUESTIONS.md
+  gained one non-blocking note (Task 4 non-reproduction).
+- Deviations from prompt: Task 4 fixed no observable bug (the mapping was
+  already field-scoped on main); delivered the requested explicit mapping and
+  recorded the non-reproduction rather than inventing a defect.
