@@ -94,8 +94,8 @@ final class SubmissionsController
         }
 
         $status = (string) $submission['status'];
-        if ($status !== 'failed' && $status !== 'dead') {
-            self::flash($c)->error('Only failed or dead submissions can be retried.');
+        if (!in_array($status, ['failed', 'dead', 'received'], true)) {
+            self::flash($c)->error('Only failed, dead, or unsent (received) submissions can be retried.');
 
             return self::redirectBack($response, $data);
         }
@@ -151,10 +151,11 @@ final class SubmissionsController
     private static function retryMessage(int $id, string $result): string
     {
         return match ($result) {
-            DeliveryService::RESULT_SENT   => "Submission #{$id} delivered.",
-            DeliveryService::RESULT_FAILED => "Submission #{$id} still failing; another retry is scheduled.",
-            DeliveryService::RESULT_DEAD   => "Submission #{$id} has exhausted its retries and is now dead.",
-            default                        => "Submission #{$id} could not be retried.",
+            DeliveryService::RESULT_SENT    => "Submission #{$id} delivered.",
+            DeliveryService::RESULT_FAILED  => "Submission #{$id} still failing; another retry is scheduled.",
+            DeliveryService::RESULT_DEAD    => "Submission #{$id} has exhausted its retries and is now dead.",
+            DeliveryService::RESULT_SKIPPED => "Submission #{$id} was not attempted — email sending is disabled.",
+            default                         => "Submission #{$id} could not be retried.",
         };
     }
 

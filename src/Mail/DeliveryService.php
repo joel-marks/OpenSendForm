@@ -73,6 +73,15 @@ final class DeliveryService
             return self::RESULT_SKIPPED;
         }
 
+        // A never-attempted 'received' submission is only swept for delivery
+        // once mail is actually enabled. With mail off we skip it untouched —
+        // it stays 'received' with attempts = 0 and no backoff, exactly as the
+        // in-request DeliveryStage left it, so a disabled sweep never burns an
+        // attempt or schedules a retry it cannot make.
+        if ((string) $submission['status'] === 'received' && !$this->canDeliver()) {
+            return self::RESULT_SKIPPED;
+        }
+
         $form = $this->forms->findById((int) $submission['form_id']);
         if ($form === null) {
             // No recipient to deliver to; nothing sensible to retry.
@@ -106,7 +115,10 @@ final class DeliveryService
     }
 
     /**
-     * Re-attempt every failed submission whose retry has come due.
+     * Re-attempt every submission the sweep finds due: 'failed' rows whose
+     * backoff has elapsed AND never-attempted 'received' rows (see
+     * SubmissionRepository::findDueForRetry). With mail disabled the received
+     * rows are skipped untouched; enabling mail later delivers them.
      *
      * @param string|null $now A 'Y-m-d H:i:s' UTC cutoff; defaults to the
      *                         clock's current time.
@@ -131,6 +143,17 @@ final class DeliveryService
         }
 
         return $summary;
+    }
+
+    /**
+     * Whether mail can actually be sent right now. Mirrors DeliveryStage's
+     * gate: MAIL_ENABLED is the primary switch, a non-empty SMTP_HOST the
+     * secondary guard. Used to decide whether a never-attempted 'received'
+     * submission should be swept or left for later.
+     */
+    private function canDeliver(): bool
+    {
+        return $this->config->mailEnabled() && trim($this->config->smtpHost()) !== '';
     }
 
     /**

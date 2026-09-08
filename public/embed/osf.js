@@ -282,9 +282,16 @@
       });
     }
 
+    // Server error codes that belong to a specific field, mapped to that
+    // field's name. A code listed here attaches its message to ONLY that one
+    // input; any code not listed (or whose field is absent) renders solely in
+    // the form-level strip — never duplicated under every field.
+    var FIELD_FOR_CODE = { invalid_email: 'email', email_domain_invalid: 'email' };
+
     function showError(code, message) {
-      if (code === 'invalid_email' || code === 'email_domain_invalid') {
-        var field = form.querySelector('[name=email]');
+      var fieldName = FIELD_FOR_CODE[code];
+      if (fieldName) {
+        var field = form.querySelector('[name="' + fieldName + '"]');
         if (field) { showFieldError(field, message); return; }
       }
       showFormError(message);
